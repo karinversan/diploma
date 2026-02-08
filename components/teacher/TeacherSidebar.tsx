@@ -12,6 +12,9 @@ import { SelectedScheduleSlot } from "@/components/teacher/SchedulePicker";
 type TeacherSidebarProps = {
   teacher: Teacher;
   selectedSlot: SelectedScheduleSlot | null;
+  bookingHrefBase?: string;
+  messageHref?: string;
+  bookingButtonLabel?: string;
 };
 
 function formatDate(value: string) {
@@ -23,14 +26,32 @@ function formatDate(value: string) {
   }).format(date);
 }
 
-export function TeacherSidebar({ teacher, selectedSlot }: TeacherSidebarProps) {
-  const query = new URLSearchParams({ role: "student", teacher: teacher.id });
+function resolveBookingLink(teacher: Teacher, selectedSlot: SelectedScheduleSlot | null, bookingHrefBase?: string) {
+  const defaultBookingQuery = new URLSearchParams({ role: "student", teacher: teacher.id });
+  const defaultHref = `/signup?${defaultBookingQuery.toString()}`;
+  const targetHref = bookingHrefBase ?? defaultHref;
 
-  if (selectedSlot) {
-    query.set("slot", `${selectedSlot.date} ${selectedSlot.time}`);
+  if (!selectedSlot) {
+    return targetHref;
   }
 
-  const bookingLink = `/signup?${query.toString()}`;
+  const [pathname, rawQuery = ""] = targetHref.split("?");
+  const params = new URLSearchParams(rawQuery);
+  params.set("slot", `${selectedSlot.date} ${selectedSlot.time}`);
+
+  return `${pathname}?${params.toString()}`;
+}
+
+export function TeacherSidebar({
+  teacher,
+  selectedSlot,
+  bookingHrefBase,
+  messageHref,
+  bookingButtonLabel
+}: TeacherSidebarProps) {
+  const bookingLink = resolveBookingLink(teacher, selectedSlot, bookingHrefBase);
+  const chatLink = messageHref ?? "/login";
+  const primaryLabel = bookingButtonLabel ?? "Записаться на пробный урок";
 
   return (
     <aside className="space-y-4 xl:sticky xl:top-28 xl:self-start">
@@ -73,10 +94,10 @@ export function TeacherSidebar({ teacher, selectedSlot }: TeacherSidebarProps) {
                 href={bookingLink}
                 className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
               >
-                Записаться на пробный урок
+                {primaryLabel}
               </Link>
               <Link
-                href="/login"
+                href={chatLink}
                 className="inline-flex items-center justify-center rounded-full border border-border bg-white px-4 py-3 text-sm font-semibold text-foreground"
               >
                 Написать сообщение
@@ -134,10 +155,10 @@ export function TeacherSidebar({ teacher, selectedSlot }: TeacherSidebarProps) {
                 href={bookingLink}
                 className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
               >
-                Записаться на пробный урок
+                {primaryLabel}
               </Link>
               <Link
-                href="/login"
+                href={chatLink}
                 className="inline-flex items-center justify-center rounded-full border border-border bg-white px-5 py-2.5 text-sm font-semibold text-foreground"
               >
                 <MessageSquare className="mr-2 h-4 w-4 text-primary" aria-hidden="true" />

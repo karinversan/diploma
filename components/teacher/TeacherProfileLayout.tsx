@@ -11,9 +11,12 @@ import { TeacherTabs } from "@/components/teacher/TeacherTabs";
 
 type TeacherProfileLayoutProps = {
   teacher: Teacher;
+  bookingHrefBase?: string;
+  messageHref?: string;
+  bookingButtonLabel?: string;
 };
 
-export function TeacherProfileLayout({ teacher }: TeacherProfileLayoutProps) {
+export function TeacherProfileLayout({ teacher, bookingHrefBase, messageHref, bookingButtonLabel }: TeacherProfileLayoutProps) {
   const [selectedSlot, setSelectedSlot] = useState<SelectedScheduleSlot | null>(null);
 
   return (
@@ -23,7 +26,13 @@ export function TeacherProfileLayout({ teacher }: TeacherProfileLayoutProps) {
         <TeacherTabs teacher={teacher} selectedSlot={selectedSlot} onSelectSlot={setSelectedSlot} />
       </div>
 
-      <TeacherSidebar teacher={teacher} selectedSlot={selectedSlot} />
+      <TeacherSidebar
+        teacher={teacher}
+        selectedSlot={selectedSlot}
+        bookingHrefBase={bookingHrefBase}
+        messageHref={messageHref}
+        bookingButtonLabel={bookingButtonLabel}
+      />
     </section>
   );
 }
