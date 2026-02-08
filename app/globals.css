@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 220 33% 99%;
+  --foreground: 228 19% 14%;
+  --primary: 256 89% 62%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 85 89% 73%;
+  --accent-foreground: 224 23% 13%;
+  --card: 0 0% 100%;
+  --card-foreground: 228 19% 14%;
+  --muted: 220 24% 95%;
+  --muted-foreground: 225 12% 42%;
+  --border: 220 23% 90%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.25);
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
