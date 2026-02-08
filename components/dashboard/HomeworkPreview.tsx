@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { HomeworkItem } from "@/data/homework";
+import { homeworkAssignmentTypeLabels, homeworkCheckModeLabels, HomeworkItem } from "@/data/homework";
 
 import { PillBadge } from "@/components/shared/PillBadge";
 
@@ -45,6 +45,9 @@ export function HomeworkPreview({ items }: HomeworkPreviewProps) {
                 </div>
                 <PillBadge variant={status.variant}>{status.label}</PillBadge>
               </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {homeworkAssignmentTypeLabels[item.assignmentType]} • {homeworkCheckModeLabels[item.checkMode]}
+              </p>
               <p className="mt-2 text-xs text-muted-foreground">Сдать до: {formatDateLabel(item.dueDate)}</p>
             </li>
           );

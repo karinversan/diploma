@@ -1,7 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { Plus, Search, X } from "lucide-react";
+import { BookOpenText, Search, X } from "lucide-react";
 
 import { CategoryChips } from "@/components/courses/CategoryChips";
 import { CourseCard } from "@/components/courses/CourseCard";
@@ -45,6 +45,10 @@ export default function CoursesPage() {
             <div>
               <h1 className="text-3xl font-semibold text-foreground">Курсы</h1>
               <p className="mt-1 text-sm text-muted-foreground">Подберите программы по уровню, формату и расписанию</p>
+              <p className="mt-2 rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                Курсы «По расписанию» включают живые уроки и запись на слот. Курсы «По запросу» доступны сразу в
+                самостоятельном темпе.
+              </p>
             </div>
 
             <Dialog.Root>
@@ -53,8 +57,8 @@ export default function CoursesPage() {
                   type="button"
                   className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"
                 >
-                  <Plus className="h-4 w-4" />
-                  Добавить курс
+                  <BookOpenText className="h-4 w-4" />
+                  Как проходит обучение
                 </button>
               </Dialog.Trigger>
 
@@ -62,7 +66,7 @@ export default function CoursesPage() {
                 <Dialog.Overlay className="fixed inset-0 z-[70] bg-slate-950/70" />
                 <Dialog.Content className="fixed left-1/2 top-1/2 z-[71] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-border bg-white p-6 shadow-soft">
                   <div className="flex items-center justify-between">
-                    <Dialog.Title className="text-lg font-semibold text-foreground">Новый курс</Dialog.Title>
+                    <Dialog.Title className="text-lg font-semibold text-foreground">Как устроен процесс обучения</Dialog.Title>
                     <Dialog.Close asChild>
                       <button
                         type="button"
@@ -74,17 +78,20 @@ export default function CoursesPage() {
                     </Dialog.Close>
                   </div>
 
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    В демо-версии создание курса недоступно. В рабочем продукте здесь будет мастер добавления курса с программой,
-                    ценой и графиком занятий.
-                  </p>
+                  <ol className="mt-3 space-y-2 text-sm text-muted-foreground">
+                    <li>1. Выбираете курс и цель обучения.</li>
+                    <li>2. Открываете программу курса и изучаете модули.</li>
+                    <li>3. Для живых курсов бронируете слот с преподавателем.</li>
+                    <li>4. Выполняете домашние задания и получаете обратную связь.</li>
+                    <li>5. Следите за прогрессом в аналитике и корректируете план.</li>
+                  </ol>
 
                   <Dialog.Close asChild>
                     <button
                       type="button"
                       className="mt-5 inline-flex rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"
                     >
-                      Понятно
+                      Понял, продолжить
                     </button>
                   </Dialog.Close>
                 </Dialog.Content>

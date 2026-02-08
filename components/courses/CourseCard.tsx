@@ -20,7 +20,12 @@ type CourseCardProps = {
 
 export function CourseCard({ course }: CourseCardProps) {
   const progress = calculateProgress(course);
-  const actionLabel = course.lessonsCompleted > 0 ? "Продолжить" : "Начать";
+  const actionLabel =
+    progress > 0 ? "Открыть курс" : course.accessType === "По расписанию" ? "Записаться" : "Начать курс";
+  const actionHint =
+    course.accessType === "По расписанию"
+      ? "Живые уроки по расписанию"
+      : "Материалы доступны сразу";
 
   return (
     <article
@@ -52,6 +57,9 @@ export function CourseCard({ course }: CourseCardProps) {
             <Clock3 className="h-3.5 w-3.5" />
             {course.durationHours} часов
           </span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-slate-100 px-2 py-0.5">
+            {actionHint}
+          </span>
         </div>
 
         <div className="mt-4">
@@ -67,7 +75,7 @@ export function CourseCard({ course }: CourseCardProps) {
         <div className="mt-4 flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">{course.teacherName}</p>
           <Link
-            href={`/app/lessons?course=${course.id}`}
+            href={`/app/courses/${course.id}`}
             className="inline-flex items-center gap-1 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
           >
             <PlayCircle className="h-3.5 w-3.5" />

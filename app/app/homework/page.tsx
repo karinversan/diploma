@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { PillBadge } from "@/components/shared/PillBadge";
-import { homeworkItems, HomeworkItem } from "@/data/homework";
+import {
+  homeworkAssignmentTypeLabels,
+  homeworkCheckModeLabels,
+  homeworkItems,
+  HomeworkItem
+} from "@/data/homework";
 
 const statusOptions: Array<{ value: "all" | HomeworkItem["status"]; label: string }> = [
   { value: "all", label: "Все статусы" },
@@ -28,26 +33,45 @@ function formatDate(dateValue: string) {
 export default function HomeworkPage() {
   const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]["value"]>("all");
   const [subjectFilter, setSubjectFilter] = useState("Все предметы");
+  const [typeFilter, setTypeFilter] = useState("Все форматы");
+  const [checkFilter, setCheckFilter] = useState("Все варианты");
 
   const subjects = useMemo(() => {
     const unique = Array.from(new Set(homeworkItems.map((item) => item.subject))).sort((a, b) => a.localeCompare(b, "ru"));
     return ["Все предметы", ...unique];
   }, []);
 
+  const typeOptions = useMemo(() => {
+    return ["Все форматы", ...Object.values(homeworkAssignmentTypeLabels)];
+  }, []);
+
+  const checkOptions = useMemo(() => {
+    return ["Все варианты", ...Object.values(homeworkCheckModeLabels)];
+  }, []);
+
   const filteredHomework = useMemo(() => {
     return homeworkItems
       .filter((item) => (statusFilter === "all" ? true : item.status === statusFilter))
       .filter((item) => (subjectFilter === "Все предметы" ? true : item.subject === subjectFilter))
+      .filter((item) => (typeFilter === "Все форматы" ? true : homeworkAssignmentTypeLabels[item.assignmentType] === typeFilter))
+      .filter((item) => (checkFilter === "Все варианты" ? true : homeworkCheckModeLabels[item.checkMode] === checkFilter))
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-  }, [statusFilter, subjectFilter]);
+  }, [checkFilter, statusFilter, subjectFilter, typeFilter]);
+
+  const autoCheckedCount = homeworkItems.filter((item) => item.checkMode === "auto").length;
+  const expertCheckedCount = homeworkItems.filter((item) => item.checkMode === "ai_teacher").length;
 
   return (
     <div className="space-y-5">
       <section className="rounded-3xl border border-border bg-white p-5 shadow-card sm:p-6">
         <h1 className="text-3xl font-semibold text-foreground">Домашние задания</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Следите за сроками сдачи и статусом проверки</p>
+        <p className="mt-1 text-sm text-muted-foreground">Тесты, тренажеры и задания с проверкой ИИ + преподавателя</p>
+        <p className="mt-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
+          Автопроверяемые задания дают мгновенный фидбек и можно перепройти. Эссе и аудио идут через ИИ-предпроверку и
+          финальную оценку преподавателя.
+        </p>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm">
             <span className="mb-1 block font-semibold text-foreground">Статус</span>
             <select
@@ -77,6 +101,47 @@ export default function HomeworkPage() {
               ))}
             </select>
           </label>
+
+          <label className="text-sm">
+            <span className="mb-1 block font-semibold text-foreground">Формат</span>
+            <select
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.target.value)}
+              className="w-full rounded-2xl border border-border bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-primary"
+            >
+              {typeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="text-sm">
+            <span className="mb-1 block font-semibold text-foreground">Проверка</span>
+            <select
+              value={checkFilter}
+              onChange={(event) => setCheckFilter(event.target.value)}
+              className="w-full rounded-2xl border border-border bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-primary"
+            >
+              {checkOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <article className="rounded-2xl border border-border bg-slate-50 p-3">
+            <p className="text-xs text-muted-foreground">Автопроверка</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{autoCheckedCount} заданий</p>
+          </article>
+          <article className="rounded-2xl border border-border bg-slate-50 p-3">
+            <p className="text-xs text-muted-foreground">ИИ + преподаватель</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{expertCheckedCount} заданий</p>
+          </article>
         </div>
       </section>
 
@@ -87,9 +152,10 @@ export default function HomeworkPage() {
               <tr>
                 <th className="px-4 py-3">Задание</th>
                 <th className="px-4 py-3">Предмет</th>
+                <th className="px-4 py-3">Формат</th>
+                <th className="px-4 py-3">Проверка</th>
                 <th className="px-4 py-3">Срок</th>
                 <th className="px-4 py-3">Статус</th>
-                <th className="px-4 py-3">Урок</th>
                 <th className="px-4 py-3">Действие</th>
               </tr>
             </thead>
@@ -104,19 +170,23 @@ export default function HomeworkPage() {
                       <p className="mt-1 max-w-xs text-xs text-muted-foreground">{item.description}</p>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{item.subject}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{homeworkAssignmentTypeLabels[item.assignmentType]}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{homeworkCheckModeLabels[item.checkMode]}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(item.dueDate)}</td>
                     <td className="px-4 py-3">
                       <PillBadge variant={status.variant}>{status.label}</PillBadge>
                     </td>
                     <td className="px-4 py-3">
-                      <Link href={`/app/lessons/${item.lessonId}`} className="font-medium text-primary hover:underline">
-                        Открыть урок
+                      <Link
+                        href={`/app/homework/${item.id}`}
+                        className="inline-flex rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-foreground"
+                      >
+                        {item.checkMode === "auto"
+                          ? "Открыть тренажер"
+                          : item.status === "submitted" || item.status === "graded"
+                            ? "Посмотреть"
+                            : "Выполнить"}
                       </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button type="button" className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-foreground">
-                        Открыть
-                      </button>
                     </td>
                   </tr>
                 );

@@ -61,6 +61,21 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      <section className="grid gap-3 md:grid-cols-3">
+        <article className="rounded-3xl border border-border bg-white p-4 shadow-card">
+          <p className="text-sm font-semibold text-foreground">1. Курс и цель</p>
+          <p className="mt-1 text-xs text-muted-foreground">Выбираете курс, формат и преподавателя под ваш результат.</p>
+        </article>
+        <article className="rounded-3xl border border-border bg-white p-4 shadow-card">
+          <p className="text-sm font-semibold text-foreground">2. Уроки и практика</p>
+          <p className="mt-1 text-xs text-muted-foreground">Проходите занятия, получаете конспект и выполняете домашние задания.</p>
+        </article>
+        <article className="rounded-3xl border border-border bg-white p-4 shadow-card">
+          <p className="text-sm font-semibold text-foreground">3. Прогресс и результат</p>
+          <p className="mt-1 text-xs text-muted-foreground">Смотрите аналитику, закрываете пробелы и улучшаете итоговые показатели.</p>
+        </article>
+      </section>
+
       <KpiCards metrics={dashboardMetrics} />
 
       <div className="grid gap-6 xl:grid-cols-[1.35fr_0.85fr]">

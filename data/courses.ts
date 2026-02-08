@@ -218,3 +218,15 @@ export const courses: StudentCourse[] = [
     certificateAvailable: false
   }
 ];
+
+export function getCourseById(id: string) {
+  return courses.find((course) => course.id === id);
+}
+
+export function getCourseProgressPercent(course: StudentCourse) {
+  if (course.lessonsTotal <= 0) {
+    return 0;
+  }
+
+  return Math.round((course.lessonsCompleted / course.lessonsTotal) * 100);
+}
