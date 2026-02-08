@@ -10,19 +10,36 @@ import { TeacherCard } from "@/components/TeacherCard";
 
 type SortOption = "popular" | "price-asc" | "price-desc" | "rating";
 
+function safeDecode(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 type TeachersDirectoryProps = {
   initialCategory?: string;
+  initialSubject?: string;
+  initialLevel?: string;
 };
 
-export function TeachersDirectory({ initialCategory }: TeachersDirectoryProps) {
-  const decodedInitialCategory = initialCategory ? decodeURIComponent(initialCategory) : undefined;
+export function TeachersDirectory({ initialCategory, initialSubject, initialLevel }: TeachersDirectoryProps) {
+  const decodedInitialCategory = safeDecode(initialCategory);
+  const decodedInitialSubject = safeDecode(initialSubject);
+  const decodedInitialLevel = safeDecode(initialLevel);
 
   const normalizedInitialCategory = categories.includes(decodedInitialCategory as (typeof categories)[number])
     ? (decodedInitialCategory as (typeof categories)[number])
     : "Все категории";
+  const normalizedInitialSubject = subjects.includes(decodedInitialSubject ?? "") ? (decodedInitialSubject as string) : "Все предметы";
 
   const [search, setSearch] = useState("");
-  const [subject, setSubject] = useState("Все предметы");
+  const [subject, setSubject] = useState(normalizedInitialSubject);
   const [priceRange, setPriceRange] = useState("all");
   const [rating, setRating] = useState("all");
   const [availableToday, setAvailableToday] = useState(false);
@@ -32,8 +49,15 @@ export function TeachersDirectory({ initialCategory }: TeachersDirectoryProps) {
   const filteredTeachers = useMemo(() => {
     const result = teachers
       .filter((teacher) => {
-        if (search && !teacher.name.toLowerCase().includes(search.toLowerCase())) {
-          return false;
+        if (search) {
+          const normalizedQuery = search.toLowerCase().trim();
+          const matchesName = teacher.name.toLowerCase().includes(normalizedQuery);
+          const matchesSubject = teacher.subjects.some((item) => item.toLowerCase().includes(normalizedQuery));
+          const matchesBio = teacher.bio.toLowerCase().includes(normalizedQuery);
+
+          if (!matchesName && !matchesSubject && !matchesBio) {
+            return false;
+          }
         }
 
         if (subject !== "Все предметы" && !teacher.subjects.includes(subject)) {
@@ -102,6 +126,13 @@ export function TeachersDirectory({ initialCategory }: TeachersDirectoryProps) {
           <p className="mt-3 text-lg text-muted-foreground">
             Поиск, фильтры и сортировка работают в реальном времени без перезагрузки страницы.
           </p>
+          {normalizedInitialSubject !== "Все предметы" || decodedInitialLevel ? (
+            <p className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2 text-xs font-medium text-primary">
+              Подбор по диагностике:
+              {normalizedInitialSubject !== "Все предметы" ? <span>{normalizedInitialSubject}</span> : null}
+              {decodedInitialLevel ? <span>уровень {decodedInitialLevel}</span> : null}
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-6 flex flex-wrap gap-2">

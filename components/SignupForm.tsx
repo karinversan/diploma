@@ -51,6 +51,12 @@ export function SignupForm({ initialRole, selectedTeacher }: SignupFormProps) {
     <div className="mx-auto w-full max-w-2xl rounded-3xl border border-border bg-white p-6 shadow-soft sm:p-8">
       <h1 className="text-2xl font-semibold text-foreground">{heading}</h1>
       <p className="mt-2 text-sm text-muted-foreground">Демо-форма: данные не отправляются на сервер.</p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Нужна консультация перед регистрацией?{" "}
+        <Link href={role === "student" ? "/lead?role=student" : "/lead?role=tutor"} className="font-semibold text-primary">
+          Оставить заявку
+        </Link>
+      </p>
 
       <div className="mt-5 grid w-full max-w-sm grid-cols-2 rounded-full border border-border bg-slate-50 p-1">
         <button
@@ -98,7 +104,7 @@ export function SignupForm({ initialRole, selectedTeacher }: SignupFormProps) {
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-foreground">Email</span>
+            <span className="mb-2 block text-sm font-medium text-foreground">Электронная почта</span>
             <input
               required
               type="email"

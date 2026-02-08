@@ -35,6 +35,9 @@ export function Hero() {
               Стать преподавателем
             </Link>
           </div>
+          <Link href="/assessment" className="mt-4 inline-flex text-sm font-semibold text-primary hover:opacity-80">
+            Пройти предварительное тестирование уровня
+          </Link>
 
           <div className="mt-8 flex flex-wrap gap-3 text-sm font-medium text-muted-foreground">
             <span className="rounded-full border border-border bg-white px-4 py-2">Без установки приложений</span>

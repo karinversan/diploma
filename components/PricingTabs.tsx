@@ -69,7 +69,7 @@ export function PricingTabs() {
               </ul>
 
               <Link
-                href={tab === "student" ? "/signup?role=student" : "/signup?role=tutor"}
+                href={tab === "student" ? "/lead?role=student" : "/lead?role=tutor"}
                 className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
               >
                 {plan.cta}

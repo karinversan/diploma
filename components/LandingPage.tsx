@@ -15,6 +15,7 @@ import { Hero } from "@/components/Hero";
 import { HowItWorksTabs } from "@/components/HowItWorksTabs";
 import { MetricsRow } from "@/components/MetricsRow";
 import { PricingTabs } from "@/components/PricingTabs";
+import { StudentFunnelSection } from "@/components/StudentFunnelSection";
 import { TeachersShowcase } from "@/components/TeachersShowcase";
 import { TrustSection } from "@/components/TrustSection";
 import { TutorRecruitSection } from "@/components/TutorRecruitSection";
@@ -54,6 +55,7 @@ export function LandingPage() {
 
         <Hero />
         <MetricsRow />
+        <StudentFunnelSection />
         <HowItWorksTabs />
         <ClassroomSection />
         <AIFeaturesSection />
@@ -73,13 +75,13 @@ export function LandingPage() {
         <div className="fixed inset-x-3 bottom-3 z-40 rounded-2xl border border-border bg-white p-2 shadow-soft md:hidden">
           <div className="grid grid-cols-2 gap-2">
             <Link
-              href="/teachers"
+              href="/assessment"
               className="inline-flex items-center justify-center rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground"
             >
-              Найти репетитора
+              Пройти тест
             </Link>
             <Link
-              href="/signup?role=tutor"
+              href="/lead?role=tutor"
               className="inline-flex items-center justify-center rounded-xl border border-border bg-white px-3 py-2.5 text-sm font-semibold text-foreground"
             >
               Стать преподавателем

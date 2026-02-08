@@ -171,17 +171,10 @@ export const teachers: Teacher[] = [
   }
 ];
 
-export const subjects = [
-  "Все предметы",
-  "Английский",
-  "Математика",
-  "Русский язык",
-  "Программирование",
-  "Физика",
-  "Химия",
-  "Биология",
-  "Немецкий",
-  "Французский"
-];
+const uniqueSubjects = Array.from(new Set(teachers.flatMap((teacher) => teacher.subjects))).sort((a, b) =>
+  a.localeCompare(b, "ru")
+);
+
+export const subjects = ["Все предметы", ...uniqueSubjects];
 
 export const categories: Array<Teacher["category"]> = ["Дети", "Подростки", "Студенты", "Взрослые"];

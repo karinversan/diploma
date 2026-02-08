@@ -64,10 +64,10 @@ export function TeacherCard({ teacher, variant = "directory" }: TeacherCardProps
           Профиль
         </Link>
         <Link
-          href={`/signup?role=student&teacher=${encodeURIComponent(teacher.id)}`}
+          href={`/lead?role=student&teacher=${encodeURIComponent(teacher.id)}`}
           className="inline-flex flex-1 items-center justify-center rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
         >
-          Записаться
+          Оставить заявку
         </Link>
       </div>
 

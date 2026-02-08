@@ -4,11 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-type MobileMenuProps = {
-  navItems: Array<{ label: string; href: string }>;
+type NavAction = {
+  label: string;
+  href: string;
 };
 
-export function MobileMenu({ navItems }: MobileMenuProps) {
+type MobileMenuProps = {
+  navItems: Array<{ label: string; href: string }>;
+  secondaryAction: NavAction;
+  primaryAction: NavAction;
+};
+
+export function MobileMenu({ navItems, secondaryAction, primaryAction }: MobileMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
 
@@ -38,7 +45,7 @@ export function MobileMenu({ navItems }: MobileMenuProps) {
   }, [isOpen]);
 
   return (
-    <div className="lg:hidden">
+    <div className="xl:hidden">
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
@@ -82,7 +89,7 @@ export function MobileMenu({ navItems }: MobileMenuProps) {
                     <Link
                       href={item.href}
                       onClick={() => setIsOpen(false)}
-                      className="block rounded-2xl border border-border bg-slate-50 px-4 py-3 text-base font-medium text-foreground transition hover:border-primary"
+                      className="block whitespace-nowrap rounded-2xl border border-border bg-slate-50 px-4 py-3 text-sm font-medium text-foreground transition hover:border-primary"
                     >
                       {item.label}
                     </Link>
@@ -93,18 +100,18 @@ export function MobileMenu({ navItems }: MobileMenuProps) {
 
             <div className="mt-6 grid gap-3">
               <Link
-                href="/login"
+                href={secondaryAction.href}
                 onClick={() => setIsOpen(false)}
-                className="inline-flex items-center justify-center rounded-full border border-border px-4 py-3 text-sm font-medium"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-border px-4 py-3 text-sm font-medium"
               >
-                Войти
+                {secondaryAction.label}
               </Link>
               <Link
-                href="/signup?role=student"
+                href={primaryAction.href}
                 onClick={() => setIsOpen(false)}
-                className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground"
               >
-                Начать обучение
+                {primaryAction.label}
               </Link>
             </div>
           </div>

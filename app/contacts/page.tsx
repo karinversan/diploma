@@ -8,7 +8,7 @@ export default function ContactsPage() {
       <main className="mx-auto w-full max-w-4xl px-4 pb-16 pt-28 sm:px-6 sm:pt-32">
         <h1 className="text-3xl font-semibold text-foreground">Контакты</h1>
         <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-          Email: support@umnyklass.demo
+          Электронная почта: support@umnyklass.demo
           <br />
           Телефон: +7 (900) 000-00-00
           <br />

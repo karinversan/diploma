@@ -24,7 +24,7 @@ export function LoginForm() {
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
         <label className="block">
-          <span className="mb-2 block text-sm font-medium text-foreground">Email или телефон</span>
+          <span className="mb-2 block text-sm font-medium text-foreground">Электронная почта или телефон</span>
           <input
             required
             type="text"
