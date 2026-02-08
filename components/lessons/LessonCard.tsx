@@ -27,6 +27,12 @@ type LessonCardProps = {
 
 export function LessonCard({ lesson }: LessonCardProps) {
   const startsSoon = isLessonStartingSoon(lesson);
+  const isBookedLesson = lesson.id.startsWith("booked-");
+  const primaryLabel = isBookedLesson
+    ? "Открыть детали брони"
+    : lesson.status === "upcoming"
+      ? "Перейти в урок"
+      : "Открыть материалы";
 
   return (
     <article className="rounded-3xl border border-border bg-white p-5 shadow-card">
@@ -36,6 +42,7 @@ export function LessonCard({ lesson }: LessonCardProps) {
             <h3 className="text-lg font-semibold text-foreground">{lesson.subject}</h3>
             <PillBadge variant={statusText[lesson.status].variant}>{statusText[lesson.status].label}</PillBadge>
             {startsSoon ? <PillBadge variant="accent">Скоро начнётся</PillBadge> : null}
+            {isBookedLesson ? <PillBadge variant="success">Запись подтверждена</PillBadge> : null}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">Преподаватель: {lesson.teacherName}</p>
           <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -57,7 +64,7 @@ export function LessonCard({ lesson }: LessonCardProps) {
             className="inline-flex items-center gap-1 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
           >
             <Video className="h-3.5 w-3.5" />
-            {lesson.status === "upcoming" ? "Перейти в урок" : "Открыть материалы"}
+            {primaryLabel}
           </Link>
         </div>
       </div>

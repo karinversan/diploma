@@ -5,6 +5,8 @@ type LessonsPageProps = {
     course?: string;
     teacher?: string;
     slot?: string;
+    subject?: string;
+    booking?: string;
   };
 };
 
@@ -26,6 +28,8 @@ export default function LessonsPage({ searchParams }: LessonsPageProps) {
       selectedCourse={safeDecode(searchParams?.course)}
       selectedTeacher={safeDecode(searchParams?.teacher)}
       selectedSlot={safeDecode(searchParams?.slot)}
+      selectedSubject={safeDecode(searchParams?.subject)}
+      selectedBookingId={safeDecode(searchParams?.booking)}
     />
   );
 }
