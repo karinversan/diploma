@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { LessonCalendar } from "@/components/lessons/LessonCalendar";
 import { LessonCard } from "@/components/lessons/LessonCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { lessons } from "@/data/lessons";
+import { getTeacherById } from "@/data/teachers";
 import { useLessonCalendar } from "@/hooks/useLessonCalendar";
 
 type LessonTab = "upcoming" | "completed";
@@ -18,6 +20,10 @@ type LessonsPageClientProps = {
 
 export function LessonsPageClient({ selectedCourse, selectedTeacher, selectedSlot }: LessonsPageClientProps) {
   const [activeTab, setActiveTab] = useState<LessonTab>("upcoming");
+  const teacher = selectedTeacher ? getTeacherById(selectedTeacher) : undefined;
+  const bookingDraft = selectedSlot
+    ? `Здравствуйте! Хочу записаться на урок ${selectedSlot}.`
+    : "Здравствуйте! Хочу уточнить ближайшие слоты для занятия.";
 
   const baseLessons = useMemo(() => {
     const targetStatus = activeTab === "upcoming" ? "upcoming" : "completed";
@@ -77,13 +83,32 @@ export function LessonsPageClient({ selectedCourse, selectedTeacher, selectedSlo
           ) : null}
           {selectedTeacher ? (
             <p className="mt-3 rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-medium text-primary">
-              Показаны занятия выбранного преподавателя.
+              Показаны занятия преподавателя: {teacher?.name ?? "выбранный преподаватель"}.
             </p>
           ) : null}
           {selectedSlot ? (
             <p className="mt-3 rounded-2xl border border-accent/60 bg-accent/30 px-3 py-2 text-xs font-medium text-slate-900">
               Вы выбрали время: {selectedSlot}. Отправьте сообщение преподавателю для подтверждения.
             </p>
+          ) : null}
+
+          {selectedTeacher ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                href={`/app/messages?teacher=${encodeURIComponent(selectedTeacher)}&draft=${encodeURIComponent(bookingDraft)}`}
+                className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
+              >
+                Написать преподавателю
+              </Link>
+              {teacher ? (
+                <Link
+                  href={`/app/teachers/${teacher.id}`}
+                  className="inline-flex items-center justify-center rounded-full border border-border bg-white px-4 py-2 text-xs font-semibold text-foreground"
+                >
+                  Вернуться в профиль
+                </Link>
+              ) : null}
+            </div>
           ) : null}
         </section>
 

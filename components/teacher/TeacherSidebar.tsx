@@ -42,6 +42,21 @@ function resolveBookingLink(teacher: Teacher, selectedSlot: SelectedScheduleSlot
   return `${pathname}?${params.toString()}`;
 }
 
+function resolveMessageLink(teacher: Teacher, selectedSlot: SelectedScheduleSlot | null, messageHref?: string) {
+  const targetHref = messageHref ?? "/login";
+
+  if (!selectedSlot || !messageHref) {
+    return targetHref;
+  }
+
+  const [pathname, rawQuery = ""] = targetHref.split("?");
+  const params = new URLSearchParams(rawQuery);
+  const draftMessage = `Здравствуйте! Хочу записаться на урок ${formatDate(selectedSlot.date)} в ${selectedSlot.time}.`;
+  params.set("draft", draftMessage);
+
+  return `${pathname}?${params.toString()}`;
+}
+
 export function TeacherSidebar({
   teacher,
   selectedSlot,
@@ -50,7 +65,7 @@ export function TeacherSidebar({
   bookingButtonLabel
 }: TeacherSidebarProps) {
   const bookingLink = resolveBookingLink(teacher, selectedSlot, bookingHrefBase);
-  const chatLink = messageHref ?? "/login";
+  const chatLink = resolveMessageLink(teacher, selectedSlot, messageHref);
   const primaryLabel = bookingButtonLabel ?? "Записаться на пробный урок";
 
   return (

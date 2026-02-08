@@ -2,13 +2,14 @@
 
 import Image from "next/image";
 import { SendHorizontal } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { messageThreads } from "@/data/messages";
 import { cn } from "@/lib/utils";
 
 type MessagesPageClientProps = {
   preselectedThreadId?: string;
+  initialDraft?: string;
 };
 
 function formatDate(value: string) {
@@ -17,9 +18,10 @@ function formatDate(value: string) {
   );
 }
 
-export function MessagesPageClient({ preselectedThreadId }: MessagesPageClientProps) {
-  const initialThreadId = preselectedThreadId ?? messageThreads[0]?.id;
-  const [activeThreadId, setActiveThreadId] = useState<string | undefined>(initialThreadId);
+export function MessagesPageClient({ preselectedThreadId, initialDraft }: MessagesPageClientProps) {
+  const [threads, setThreads] = useState(messageThreads);
+  const [activeThreadId, setActiveThreadId] = useState<string | undefined>(preselectedThreadId ?? messageThreads[0]?.id);
+  const [composerText, setComposerText] = useState(initialDraft ?? "");
 
   useEffect(() => {
     if (preselectedThreadId && preselectedThreadId !== activeThreadId) {
@@ -27,10 +29,55 @@ export function MessagesPageClient({ preselectedThreadId }: MessagesPageClientPr
     }
   }, [activeThreadId, preselectedThreadId]);
 
+  useEffect(() => {
+    if (initialDraft) {
+      setComposerText(initialDraft);
+    }
+  }, [initialDraft]);
+
   const activeThread = useMemo(
-    () => messageThreads.find((thread) => thread.id === activeThreadId) ?? messageThreads[0],
-    [activeThreadId]
+    () => threads.find((thread) => thread.id === activeThreadId) ?? threads[0],
+    [activeThreadId, threads]
   );
+
+  const sendMessage = () => {
+    const text = composerText.trim();
+
+    if (!text || !activeThread) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const newMessage = {
+      id: `msg-${Date.now()}`,
+      sender: "student" as const,
+      text,
+      sentAt: now
+    };
+
+    setThreads((prev) =>
+      prev.map((thread) => {
+        if (thread.id !== activeThread.id) {
+          return thread;
+        }
+
+        return {
+          ...thread,
+          messages: [...thread.messages, newMessage],
+          lastMessage: text,
+          updatedAt: now,
+          unreadCount: 0
+        };
+      })
+    );
+
+    setComposerText("");
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    sendMessage();
+  };
 
   return (
     <div className="grid min-h-[calc(100vh-11rem)] gap-4 rounded-3xl border border-border bg-white p-4 shadow-card lg:grid-cols-[320px_minmax(0,1fr)] lg:p-5">
@@ -39,7 +86,7 @@ export function MessagesPageClient({ preselectedThreadId }: MessagesPageClientPr
         <p className="px-2 pt-1 text-sm text-muted-foreground">Чаты с преподавателями</p>
 
         <div className="mt-3 space-y-1">
-          {messageThreads.map((thread) => {
+          {threads.map((thread) => {
             const isActive = thread.id === activeThread?.id;
 
             return (
@@ -68,7 +115,9 @@ export function MessagesPageClient({ preselectedThreadId }: MessagesPageClientPr
                       </span>
                     ) : null}
                   </span>
-                  <span className={cn("mt-1 block truncate text-xs", isActive ? "text-white/85" : "text-muted-foreground")}>{thread.lastMessage}</span>
+                  <span className={cn("mt-1 block truncate text-xs", isActive ? "text-white/85" : "text-muted-foreground")}>
+                    {thread.lastMessage}
+                  </span>
                 </span>
               </button>
             );
@@ -119,21 +168,23 @@ export function MessagesPageClient({ preselectedThreadId }: MessagesPageClientPr
             </div>
 
             <footer className="border-t border-border p-3">
-              <label className="flex items-center gap-2 rounded-2xl border border-border bg-slate-50 px-3 py-2">
+              <form onSubmit={handleSubmit} className="flex items-center gap-2 rounded-2xl border border-border bg-slate-50 px-3 py-2">
                 <input
                   type="text"
-                  placeholder="Напишите сообщение (демо)"
+                  value={composerText}
+                  onChange={(event) => setComposerText(event.target.value)}
+                  placeholder="Напишите сообщение"
                   className="w-full bg-transparent text-sm outline-none"
                   aria-label="Поле ввода сообщения"
                 />
                 <button
-                  type="button"
+                  type="submit"
                   className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground"
                   aria-label="Отправить сообщение"
                 >
                   <SendHorizontal className="h-4 w-4" />
                 </button>
-              </label>
+              </form>
             </footer>
           </>
         ) : (

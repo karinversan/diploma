@@ -72,7 +72,7 @@ export function UpcomingLessons({ lessons }: UpcomingLessonsProps) {
                       Детали
                     </Link>
                     <Link
-                      href={`/app/lessons/${lesson.id}`}
+                      href={lesson.joinUrl}
                       className="inline-flex items-center gap-1 rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground"
                     >
                       <Video className="h-3.5 w-3.5" />

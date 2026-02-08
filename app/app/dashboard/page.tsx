@@ -30,7 +30,11 @@ export default function DashboardPage() {
   }, []);
 
   const homeworkPreviewItems = useMemo(() => {
-    return [...homeworkItems].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).slice(0, 4);
+    const activeStatuses = new Set(["new", "in_progress", "submitted"]);
+    const activeHomework = homeworkItems.filter((item) => activeStatuses.has(item.status));
+    const source = activeHomework.length > 0 ? activeHomework : homeworkItems;
+
+    return [...source].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).slice(0, 4);
   }, []);
 
   const { currentMonth, setCurrentMonth, selectedDay, setSelectedDay, lessonDays, daysInMonth, filteredByDay } =

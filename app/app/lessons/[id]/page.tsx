@@ -12,6 +12,9 @@ type LessonDetailsPageProps = {
   params: {
     id: string;
   };
+  searchParams?: {
+    live?: string;
+  };
 };
 
 function safeDecode(value: string) {
@@ -32,9 +35,10 @@ function formatDate(dateValue: string) {
   }).format(new Date(dateValue));
 }
 
-export default function LessonDetailsPage({ params }: LessonDetailsPageProps) {
+export default function LessonDetailsPage({ params, searchParams }: LessonDetailsPageProps) {
   const lessonId = safeDecode(params.id);
   const lesson = getLessonById(lessonId);
+  const isLiveMode = searchParams?.live === "1";
 
   if (!lesson) {
     return (
@@ -57,6 +61,16 @@ export default function LessonDetailsPage({ params }: LessonDetailsPageProps) {
 
   return (
     <div className="space-y-6">
+      {isLiveMode ? (
+        <section className="rounded-3xl border border-accent/70 bg-accent/30 p-4 text-sm text-slate-900 shadow-card">
+          <p className="font-semibold">Вы в демо-режиме онлайн-класса.</p>
+          <p className="mt-1">Здесь будет WebRTC-комната урока, чат и интерактивная доска.</p>
+          <Link href={`/app/lessons/${lesson.id}`} className="mt-3 inline-flex rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white">
+            Вернуться к материалам урока
+          </Link>
+        </section>
+      ) : null}
+
       <section className="rounded-3xl border border-border bg-white p-5 shadow-card sm:p-6">
         <nav aria-label="Хлебные крошки" className="text-sm text-muted-foreground">
           <Link href="/app/lessons" className="hover:text-foreground">
@@ -91,11 +105,11 @@ export default function LessonDetailsPage({ params }: LessonDetailsPageProps) {
               Чат с преподавателем
             </Link>
             <Link
-              href={`/app/lessons/${lesson.id}`}
+              href={lesson.joinUrl}
               className="inline-flex items-center gap-1 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
             >
               <Video className="h-4 w-4" />
-              Перейти в урок
+              {lesson.status === "upcoming" ? "Перейти в урок" : "Открыть материалы"}
             </Link>
           </div>
         </div>

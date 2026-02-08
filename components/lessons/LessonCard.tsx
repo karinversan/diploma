@@ -53,11 +53,11 @@ export function LessonCard({ lesson }: LessonCardProps) {
             Чат
           </Link>
           <Link
-            href={`/app/lessons/${lesson.id}`}
+            href={lesson.joinUrl}
             className="inline-flex items-center gap-1 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
           >
             <Video className="h-3.5 w-3.5" />
-            Перейти в урок
+            {lesson.status === "upcoming" ? "Перейти в урок" : "Открыть материалы"}
           </Link>
         </div>
       </div>

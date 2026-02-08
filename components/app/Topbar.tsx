@@ -3,6 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Bell, ChevronDown, Menu, Search } from "lucide-react";
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { studentProfile } from "@/data/student";
 
@@ -36,6 +38,20 @@ type TopbarProps = {
 
 export function Topbar({ pathname, onOpenSidebar }: TopbarProps) {
   const heading = resolveHeading(pathname);
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = searchQuery.trim();
+
+    if (!query) {
+      router.push("/app/teachers");
+      return;
+    }
+
+    router.push(`/app/teachers?q=${encodeURIComponent(query)}`);
+  };
 
   return (
     <header className="sticky top-0 z-20 border-b border-white/70 bg-white/80 backdrop-blur-xl">
@@ -57,15 +73,17 @@ export function Topbar({ pathname, onOpenSidebar }: TopbarProps) {
         </div>
 
         <div className="flex w-full items-center gap-3 sm:w-auto sm:flex-1 sm:justify-end">
-          <label className="relative min-w-0 flex-1 sm:max-w-md">
+          <form onSubmit={handleSearchSubmit} className="relative min-w-0 flex-1 sm:max-w-md">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type="search"
-              placeholder="Поиск курсов, уроков или преподавателей…"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Поиск преподавателей и предметов…"
               className="w-full rounded-2xl border border-border bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-primary"
-              aria-label="Поиск по кабинету"
+              aria-label="Поиск преподавателей"
             />
-          </label>
+          </form>
 
           <button
             type="button"

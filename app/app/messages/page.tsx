@@ -5,6 +5,7 @@ type MessagesPageProps = {
   searchParams?: {
     thread?: string;
     teacher?: string;
+    draft?: string;
   };
 };
 
@@ -23,9 +24,10 @@ function safeDecode(value?: string) {
 export default function MessagesPage({ searchParams }: MessagesPageProps) {
   const threadFromQuery = safeDecode(searchParams?.thread);
   const teacherFromQuery = safeDecode(searchParams?.teacher);
+  const draftFromQuery = safeDecode(searchParams?.draft);
   const threadFromTeacher = teacherFromQuery
     ? messageThreads.find((thread) => thread.teacherId === teacherFromQuery)?.id
     : undefined;
 
-  return <MessagesPageClient preselectedThreadId={threadFromQuery ?? threadFromTeacher} />;
+  return <MessagesPageClient preselectedThreadId={threadFromQuery ?? threadFromTeacher} initialDraft={draftFromQuery} />;
 }
