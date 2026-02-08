@@ -58,16 +58,16 @@ export function TeacherCard({ teacher, variant = "directory" }: TeacherCardProps
 
       <div className="mt-5 flex flex-wrap gap-3">
         <Link
-          href={`/teachers#${teacher.id}`}
+          href={`/teachers/${teacher.id}`}
           className="inline-flex flex-1 items-center justify-center rounded-full border border-border bg-white px-4 py-2.5 text-sm font-medium text-foreground transition hover:border-primary"
         >
           Профиль
         </Link>
         <Link
-          href={`/lead?role=student&teacher=${encodeURIComponent(teacher.id)}`}
+          href={`/signup?role=student&teacher=${encodeURIComponent(teacher.id)}`}
           className="inline-flex flex-1 items-center justify-center rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
         >
-          Оставить заявку
+          Записаться
         </Link>
       </div>
 
