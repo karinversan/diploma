@@ -106,23 +106,13 @@ export function TeacherClassroomClient() {
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("week");
   const [anchorDate, setAnchorDate] = useState(() => new Date("2026-04-09T08:00:00"));
   const [searchQuery, setSearchQuery] = useState("");
-  const [calendarEvents, setCalendarEvents] = useState<ClassroomEvent[]>(teacherClassroomEvents);
+  const [manualCalendarEvents, setManualCalendarEvents] = useState<ClassroomEvent[]>(teacherClassroomEvents);
   const [selectedEvent, setSelectedEvent] = useState<ClassroomEvent | null>(null);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [bookingRequests, setBookingRequests] = useState<LessonBookingRequest[]>([]);
   const [teacherActionNote, setTeacherActionNote] = useState<string | null>(null);
 
   const weekDays = useMemo(() => createWeekDays(anchorDate), [anchorDate]);
-
-  const eventsByDate = useMemo(() => {
-    const map = new Map<string, ClassroomEvent[]>();
-    calendarEvents.forEach((event) => {
-      const list = map.get(event.date) ?? [];
-      list.push(event);
-      map.set(event.date, list);
-    });
-    return map;
-  }, [calendarEvents]);
 
   const filteredStudents = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -134,6 +124,69 @@ export function TeacherClassroomClient() {
       return student.name.toLowerCase().includes(query) || student.activeCourse.toLowerCase().includes(query);
     });
   }, [searchQuery]);
+
+  useEffect(() => {
+    setBookingRequests(readLessonBookings());
+    const syncBookings = () => setBookingRequests(readLessonBookings());
+    window.addEventListener("storage", syncBookings);
+    return () => window.removeEventListener("storage", syncBookings);
+  }, []);
+
+  const requestsForTeacher = useMemo(
+    () => {
+      const active = bookingRequests.filter((request) => request.status !== "cancelled");
+      const personal = active.filter(
+        (request) => request.teacherId === teacherCabinetProfile.id || request.teacherName === teacherCabinetProfile.name
+      );
+
+      return (personal.length > 0 ? personal : active).sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+    },
+    [bookingRequests]
+  );
+
+  const pendingRequests = requestsForTeacher.filter((request) => request.status === "pending");
+  const proposedRequests = requestsForTeacher.filter((request) => request.status === "reschedule_proposed");
+  const awaitingPaymentRequests = requestsForTeacher.filter((request) => request.status === "awaiting_payment");
+  const paidRequests = requestsForTeacher.filter((request) => request.status === "paid");
+
+  const paidRequestEvents = useMemo(() => {
+    return paidRequests.map<ClassroomEvent>((request) => {
+      const slotMatch = request.slot.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
+      const date = slotMatch?.[1] ?? request.startAt.slice(0, 10);
+      const startTime = slotMatch?.[2] ?? request.startAt.slice(11, 16);
+      const startMinutes = parseEventMinutes(startTime);
+      const endMinutes = startMinutes + request.durationMinutes;
+      const endTime = formatTimeFromMinutes(endMinutes);
+
+      return {
+        id: `booking-${request.id}`,
+        title: "Индивидуальный урок",
+        type: "Лекция",
+        date,
+        startTime,
+        endTime,
+        participantName: "Новый ученик",
+        participantAvatarUrl: "/avatars/avatar-2.svg",
+        courseId: request.courseId
+      };
+    });
+  }, [paidRequests]);
+
+  const calendarEvents = useMemo(() => {
+    return [...manualCalendarEvents, ...paidRequestEvents];
+  }, [manualCalendarEvents, paidRequestEvents]);
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, ClassroomEvent[]>();
+    calendarEvents.forEach((event) => {
+      const list = map.get(event.date) ?? [];
+      list.push(event);
+      map.set(event.date, list);
+    });
+    return map;
+  }, [calendarEvents]);
 
   const filteredEvents = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -183,32 +236,6 @@ export function TeacherClassroomClient() {
 
     return { startMinute, endMinute, markers };
   }, [weekEvents]);
-
-  useEffect(() => {
-    setBookingRequests(readLessonBookings());
-    const syncBookings = () => setBookingRequests(readLessonBookings());
-    window.addEventListener("storage", syncBookings);
-    return () => window.removeEventListener("storage", syncBookings);
-  }, []);
-
-  const requestsForTeacher = useMemo(
-    () => {
-      const active = bookingRequests.filter((request) => request.status !== "cancelled");
-      const personal = active.filter(
-        (request) => request.teacherId === teacherCabinetProfile.id || request.teacherName === teacherCabinetProfile.name
-      );
-
-      return (personal.length > 0 ? personal : active).sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      );
-    },
-    [bookingRequests]
-  );
-
-  const pendingRequests = requestsForTeacher.filter((request) => request.status === "pending");
-  const proposedRequests = requestsForTeacher.filter((request) => request.status === "reschedule_proposed");
-  const awaitingPaymentRequests = requestsForTeacher.filter((request) => request.status === "awaiting_payment");
-  const paidRequests = requestsForTeacher.filter((request) => request.status === "paid");
 
   const confirmRequest = (request: LessonBookingRequest) => {
     const next = updateLessonBooking(request.id, {
@@ -269,10 +296,23 @@ export function TeacherClassroomClient() {
       return;
     }
 
-    setCalendarEvents((prev) => prev.filter((event) => event.id !== selectedEvent.id));
-    setTeacherActionNote(
-      `Занятие «${selectedEvent.title}» с ${selectedEvent.participantName} (${formatEventDateLabel(selectedEvent.date)} ${selectedEvent.startTime}–${selectedEvent.endTime}) отменено.`
-    );
+    if (selectedEvent.id.startsWith("booking-")) {
+      const bookingId = selectedEvent.id.replace("booking-", "");
+      const next = updateLessonBooking(bookingId, {
+        status: "cancelled",
+        teacherMessage: "Занятие отменено преподавателем. Выберите новый слот для записи."
+      });
+      setBookingRequests(next);
+      setTeacherActionNote(
+        `Оплаченное занятие (${formatEventDateLabel(selectedEvent.date)} ${selectedEvent.startTime}–${selectedEvent.endTime}) отменено, ученик получит уведомление.`
+      );
+    } else {
+      setManualCalendarEvents((prev) => prev.filter((event) => event.id !== selectedEvent.id));
+      setTeacherActionNote(
+        `Занятие «${selectedEvent.title}» с ${selectedEvent.participantName} (${formatEventDateLabel(selectedEvent.date)} ${selectedEvent.startTime}–${selectedEvent.endTime}) отменено.`
+      );
+    }
+
     setIsEventModalOpen(false);
     setSelectedEvent(null);
   };

@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo } from "react";
 import { Flame, Target } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { ActiveCourses } from "@/components/dashboard/ActiveCourses";
 import { AiInsights } from "@/components/dashboard/AiInsights";
@@ -16,8 +18,20 @@ import { homeworkItems } from "@/data/homework";
 import { upcomingLessons } from "@/data/lessons";
 import { studentProfile } from "@/data/student";
 import { useLessonCalendar } from "@/hooks/useLessonCalendar";
+import { formatBookingSlotLabel, LessonBookingRequest, readLessonBookings } from "@/lib/lesson-bookings";
+import { cn } from "@/lib/utils";
 
 export default function DashboardPage() {
+  const [bookings, setBookings] = useState<LessonBookingRequest[]>([]);
+
+  useEffect(() => {
+    setBookings(readLessonBookings());
+
+    const syncBookings = () => setBookings(readLessonBookings());
+    window.addEventListener("storage", syncBookings);
+    return () => window.removeEventListener("storage", syncBookings);
+  }, []);
+
   const activeCourses = useMemo(() => {
     return courses
       .filter((course) => course.lessonsCompleted < course.lessonsTotal)
@@ -44,6 +58,16 @@ export default function DashboardPage() {
     return [...filteredByDay].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
   }, [filteredByDay]);
 
+  const bookingStatusSummary = useMemo(() => {
+    const pending = bookings.filter((item) => item.status === "pending");
+    const awaitingPayment = bookings.filter((item) => item.status === "awaiting_payment");
+    const proposed = bookings.filter((item) => item.status === "reschedule_proposed");
+    const declined = bookings.filter((item) => item.status === "declined");
+    const nearestAwaiting = awaitingPayment.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())[0];
+
+    return { pending, awaitingPayment, proposed, declined, nearestAwaiting };
+  }, [bookings]);
+
   return (
     <div className="space-y-6">
       <section className="rounded-3xl border border-primary/20 bg-[linear-gradient(135deg,rgba(116,76,255,0.12),rgba(185,250,119,0.2))] p-6 shadow-card">
@@ -60,6 +84,67 @@ export default function DashboardPage() {
           </span>
         </div>
       </section>
+
+      {bookingStatusSummary.awaitingPayment.length > 0 ||
+      bookingStatusSummary.pending.length > 0 ||
+      bookingStatusSummary.proposed.length > 0 ||
+      bookingStatusSummary.declined.length > 0 ? (
+        <section
+          className={cn(
+            "rounded-3xl border p-4 shadow-soft sm:p-5",
+            bookingStatusSummary.awaitingPayment.length > 0
+              ? "border-primary/20 bg-primary/5"
+              : bookingStatusSummary.declined.length > 0
+                ? "border-rose-200 bg-rose-50"
+                : "border-border bg-white"
+          )}
+        >
+          <p className="text-base font-semibold text-foreground">Статусы записи на занятия</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Подтвержденный преподавателем урок появляется в календаре только после оплаты.
+          </p>
+
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            {bookingStatusSummary.pending.length > 0 ? (
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-700">
+                Ожидают подтверждения: {bookingStatusSummary.pending.length}
+              </span>
+            ) : null}
+            {bookingStatusSummary.awaitingPayment.length > 0 ? (
+              <span className="rounded-full bg-primary/15 px-2.5 py-1 font-semibold text-primary">
+                Ожидают оплаты: {bookingStatusSummary.awaitingPayment.length}
+              </span>
+            ) : null}
+            {bookingStatusSummary.proposed.length > 0 ? (
+              <span className="rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-700">
+                Нужен ответ по переносу: {bookingStatusSummary.proposed.length}
+              </span>
+            ) : null}
+            {bookingStatusSummary.declined.length > 0 ? (
+              <span className="rounded-full bg-rose-100 px-2.5 py-1 font-semibold text-rose-700">
+                Отклонены: {bookingStatusSummary.declined.length}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {bookingStatusSummary.nearestAwaiting ? (
+              <Link
+                href={`/app/payments?booking=${encodeURIComponent(bookingStatusSummary.nearestAwaiting.id)}`}
+                className="inline-flex rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+              >
+                Оплатить урок на {formatBookingSlotLabel(bookingStatusSummary.nearestAwaiting.slot)}
+              </Link>
+            ) : null}
+            <Link
+              href="/app/lessons"
+              className="inline-flex rounded-full border border-border bg-white px-4 py-2 text-sm font-semibold text-foreground"
+            >
+              Открыть раздел занятий
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid gap-3 md:grid-cols-3">
         <article className="rounded-3xl border border-border bg-white p-4 shadow-card">
