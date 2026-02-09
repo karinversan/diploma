@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 
 import { adminUsers, type PlatformUser } from "@/data/admin";
-import { readTutorApplications } from "@/lib/tutor-applications";
+import { readTutorApplications, TutorApplication, updateTutorApplication } from "@/lib/tutor-applications";
 import { cn } from "@/lib/utils";
 
 function formatDate(value: string) {
@@ -14,6 +14,7 @@ function formatDate(value: string) {
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState(adminUsers);
+  const [tutorApplications, setTutorApplications] = useState<TutorApplication[]>([]);
   const [pendingTutorApplications, setPendingTutorApplications] = useState(0);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | PlatformUser["role"]>("all");
@@ -21,7 +22,9 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     const syncApplications = () => {
-      const pending = readTutorApplications().filter((item) => item.status === "pending").length;
+      const applications = readTutorApplications();
+      const pending = applications.filter((item) => item.status === "pending").length;
+      setTutorApplications(applications);
       setPendingTutorApplications(pending);
     };
 
@@ -68,6 +71,13 @@ export default function AdminUsersPage() {
         return { ...user, status: "blocked" };
       })
     );
+  };
+
+  const moderateTutorApplication = (applicationId: string, status: TutorApplication["status"]) => {
+    const note = status === "approved" ? "Профиль подтвержден администратором" : "Нужна доработка анкеты и документов";
+    const next = updateTutorApplication(applicationId, { status, adminNote: note });
+    setTutorApplications(next);
+    setPendingTutorApplications(next.filter((item) => item.status === "pending").length);
   };
 
   return (
@@ -187,6 +197,74 @@ export default function AdminUsersPage() {
               )}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-border bg-white p-5 shadow-card sm:p-6">
+        <h2 className="text-xl font-semibold text-foreground">Заявки преподавателей</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Здесь администратор подтверждает или отклоняет заявки из форм «Оставить заявку» и «Регистрация преподавателя».
+        </p>
+
+        <div className="mt-4 space-y-3">
+          {tutorApplications.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-border bg-slate-50 px-4 py-3 text-sm text-muted-foreground">
+              Заявок пока нет.
+            </p>
+          ) : (
+            tutorApplications.map((application) => (
+              <article key={application.id} className="rounded-2xl border border-border bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold text-foreground">{application.fullName}</p>
+                  <span
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-xs font-semibold",
+                      application.status === "approved"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : application.status === "rejected"
+                          ? "bg-rose-100 text-rose-700"
+                          : "bg-amber-100 text-amber-700"
+                    )}
+                  >
+                    {application.status === "pending"
+                      ? "На проверке"
+                      : application.status === "approved"
+                        ? "Одобрена"
+                        : "Отклонена"}
+                  </span>
+                </div>
+
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {application.email} · {application.phone}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">Предметы: {application.subjects}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Опыт: {application.experience} · Источник: {application.source === "lead_form" ? "Лид-форма" : "Регистрация"}
+                </p>
+                {application.message ? <p className="mt-1 text-xs text-muted-foreground">Комментарий: {application.message}</p> : null}
+                {application.adminNote ? <p className="mt-1 text-xs font-medium text-primary">Решение: {application.adminNote}</p> : null}
+
+                {application.status === "pending" ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => moderateTutorApplication(application.id, "approved")}
+                      className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
+                    >
+                      Одобрить
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moderateTutorApplication(application.id, "rejected")}
+                      className="rounded-full bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
+                    >
+                      Отклонить
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            ))
+          )}
         </div>
       </section>
     </div>
