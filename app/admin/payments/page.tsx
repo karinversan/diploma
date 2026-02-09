@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { refundTickets, type RefundTicket } from "@/data/admin";
+import { type RefundTicket } from "@/data/admin";
+import { readRefundTickets, updateRefundTicket } from "@/lib/refund-tickets";
 import { cn } from "@/lib/utils";
 
 function formatDate(value: string) {
@@ -19,7 +20,14 @@ function formatAmount(amount: number) {
 }
 
 export default function AdminPaymentsPage() {
-  const [tickets, setTickets] = useState(refundTickets);
+  const [tickets, setTickets] = useState<RefundTicket[]>([]);
+
+  useEffect(() => {
+    setTickets(readRefundTickets());
+    const syncTickets = () => setTickets(readRefundTickets());
+    window.addEventListener("storage", syncTickets);
+    return () => window.removeEventListener("storage", syncTickets);
+  }, []);
 
   const totalPendingAmount = useMemo(() => {
     return tickets
@@ -28,7 +36,7 @@ export default function AdminPaymentsPage() {
   }, [tickets]);
 
   const updateTicket = (ticketId: string, status: RefundTicket["status"]) => {
-    setTickets((prev) => prev.map((ticket) => (ticket.id === ticketId ? { ...ticket, status } : ticket)));
+    setTickets(updateRefundTicket(ticketId, status));
   };
 
   return (

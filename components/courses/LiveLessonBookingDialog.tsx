@@ -21,6 +21,7 @@ import {
   readLessonBookings,
   upsertLessonBooking
 } from "@/lib/lesson-bookings";
+import { studentProfile } from "@/data/student";
 import { cn } from "@/lib/utils";
 
 const categoryKeywords: Record<string, string[]> = {
@@ -249,6 +250,7 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
         courseId: course.id,
         teacherId: selectedTeacher.teacher.id,
         teacherName: selectedTeacher.teacher.name,
+        studentName: studentProfile.name,
         subject: course.title,
         slot: selectedSlot.slotValue,
         startAt,

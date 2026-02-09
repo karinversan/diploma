@@ -12,6 +12,7 @@ import {
   updateTutorApplication
 } from "@/lib/tutor-applications";
 import { readLessonBookings } from "@/lib/lesson-bookings";
+import { readRefundTickets } from "@/lib/refund-tickets";
 import { cn } from "@/lib/utils";
 
 function formatDate(value: string) {
@@ -23,6 +24,7 @@ function formatDate(value: string) {
 export default function AdminDashboardPage() {
   const [verificationQueue, setVerificationQueue] = useState<TutorApplication[]>([]);
   const [bookingOps, setBookingOps] = useState({ pending: 0, awaitingPayment: 0, paid: 0, declined: 0 });
+  const [pendingRefunds, setPendingRefunds] = useState(0);
 
   useEffect(() => {
     const seedFromData: TutorApplication[] = tutorVerificationQueue.map((request, index) => ({
@@ -49,6 +51,7 @@ export default function AdminDashboardPage() {
         paid: bookings.filter((item) => item.status === "paid").length,
         declined: bookings.filter((item) => item.status === "declined").length
       });
+      setPendingRefunds(readRefundTickets().filter((ticket) => ticket.status === "pending").length);
     };
 
     syncApplications();
@@ -190,6 +193,7 @@ export default function AdminDashboardPage() {
                 5. Текущие бронирования: ожидают подтверждения — {bookingOps.pending}, ожидают оплаты — {bookingOps.awaitingPayment},
                 оплачено — {bookingOps.paid}, отклонено — {bookingOps.declined}.
               </p>
+              <p>6. Заявок на возврат в обработке: {pendingRefunds}.</p>
             </div>
           </article>
         </section>

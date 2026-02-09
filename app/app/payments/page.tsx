@@ -14,7 +14,9 @@ import {
   type PaymentTransaction,
   type PaymentTransactionStatus
 } from "@/data/payments";
+import { type RefundTicket } from "@/data/admin";
 import { formatBookingSlotLabel, LessonBookingRequest, readLessonBookings, updateLessonBooking } from "@/lib/lesson-bookings";
+import { readRefundTickets } from "@/lib/refund-tickets";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 5;
@@ -73,6 +75,16 @@ function getBookingStatusText(status: LessonBookingRequest["status"]) {
   return "Заявка отменена";
 }
 
+function mapRefundTicketToStatus(status: RefundTicket["status"]): PaymentTransactionStatus {
+  if (status === "approved") {
+    return "Возврат";
+  }
+  if (status === "declined") {
+    return "Отменен";
+  }
+  return "В обработке";
+}
+
 function PaymentCardTile({
   card,
   isSelected,
@@ -122,6 +134,7 @@ export default function PaymentsPage() {
   const [cards, setCards] = useState(paymentCards);
   const [transactions, setTransactions] = useState(paymentTransactions);
   const [lessonBookings, setLessonBookings] = useState<LessonBookingRequest[]>([]);
+  const [refundTickets, setRefundTickets] = useState<RefundTicket[]>([]);
   const [selectedCardId, setSelectedCardId] = useState(paymentCards.find((card) => card.isPrimary)?.id ?? paymentCards[0]?.id ?? "");
   const [searchValue, setSearchValue] = useState("");
   const [statusFilter, setStatusFilter] = useState<(typeof paymentStatusFilters)[number]["id"]>("all");
@@ -148,6 +161,13 @@ export default function PaymentsPage() {
   }, []);
 
   useEffect(() => {
+    setRefundTickets(readRefundTickets());
+    const syncRefunds = () => setRefundTickets(readRefundTickets());
+    window.addEventListener("storage", syncRefunds);
+    return () => window.removeEventListener("storage", syncRefunds);
+  }, []);
+
+  useEffect(() => {
     setPage(1);
   }, [searchValue, statusFilter, selectedCardFilter, transactions.length]);
 
@@ -156,6 +176,14 @@ export default function PaymentsPage() {
   const awaitingPaymentCount = useMemo(
     () => lessonBookings.filter((booking) => booking.status === "awaiting_payment").length,
     [lessonBookings]
+  );
+  const pendingRefunds = useMemo(
+    () => refundTickets.filter((ticket) => ticket.status === "pending"),
+    [refundTickets]
+  );
+  const recentRefunds = useMemo(
+    () => [...refundTickets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 6),
+    [refundTickets]
   );
 
   const selectedLessonBooking = useMemo(() => {
@@ -167,11 +195,30 @@ export default function PaymentsPage() {
   }, [lessonBookings, requestedBookingId]);
 
   const selectedCard = cards.find((card) => card.id === selectedCardId) ?? cards[0];
+  const displayTransactions = useMemo(() => {
+    const refundAsTransactions: PaymentTransaction[] = refundTickets.map((ticket) => ({
+      id: `refund-${ticket.id}`,
+      invoice: ticket.invoice,
+      date: ticket.createdAt,
+      status: mapRefundTicketToStatus(ticket.status),
+      productTitle: "Возврат по занятию",
+      productSubtitle: ticket.reason,
+      teacherName: "Поддержка платформы",
+      cardId: selectedCard?.id ?? paymentCards[0]?.id ?? "card-3139",
+      amount: ticket.status === "approved" ? -Math.abs(ticket.amountRubles) : Math.abs(ticket.amountRubles),
+      currency: "₽",
+      type: "lesson"
+    }));
+
+    return [...transactions, ...refundAsTransactions].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [refundTickets, selectedCard?.id, transactions]);
 
   const filteredTransactions = useMemo(() => {
     const query = searchValue.trim().toLowerCase();
 
-    return transactions.filter((transaction) => {
+    return displayTransactions.filter((transaction) => {
       if (statusFilter !== "all" && transaction.status !== statusFilter) {
         return false;
       }
@@ -191,7 +238,7 @@ export default function PaymentsPage() {
 
       return searchable.includes(query);
     });
-  }, [cardsById, searchValue, selectedCardFilter, statusFilter, transactions]);
+  }, [cardsById, displayTransactions, searchValue, selectedCardFilter, statusFilter]);
 
   const pageCount = Math.max(1, Math.ceil(filteredTransactions.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -384,6 +431,54 @@ export default function PaymentsPage() {
                 <p className="mt-1">{paymentNotice.description}</p>
               </div>
             ) : null}
+          </section>
+
+          <section className="rounded-3xl border border-border bg-white p-4 shadow-soft sm:p-5">
+            <h2 className="text-xl font-semibold text-foreground">Возвраты по занятиям</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Если оплаченный урок отменяется, заявка на возврат создаётся автоматически и отображается здесь.
+            </p>
+            <p className="mt-2 text-xs font-semibold text-muted-foreground">Заявок в обработке: {pendingRefunds.length}</p>
+
+            {recentRefunds.length === 0 ? (
+              <p className="mt-3 rounded-2xl border border-dashed border-border bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
+                Сейчас нет возвратов в обработке.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {recentRefunds.map((ticket) => (
+                  <article
+                    key={ticket.id}
+                    className={cn(
+                      "rounded-2xl border p-3",
+                      ticket.status === "approved"
+                        ? "border-emerald-300 bg-emerald-50"
+                        : ticket.status === "declined"
+                          ? "border-rose-300 bg-rose-50"
+                          : "border-amber-300 bg-amber-50"
+                    )}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-foreground">{ticket.invoice}</p>
+                      <span
+                        className={cn(
+                          "rounded-full bg-white px-2 py-0.5 text-xs font-semibold",
+                          ticket.status === "approved"
+                            ? "text-emerald-700"
+                            : ticket.status === "declined"
+                              ? "text-rose-700"
+                              : "text-amber-700"
+                        )}
+                      >
+                        {ticket.status === "approved" ? "Возврат выполнен" : ticket.status === "declined" ? "Возврат отклонен" : "В обработке"}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{ticket.reason}</p>
+                    <p className="mt-1 text-xs font-semibold text-foreground">Сумма: {formatAmount(ticket.amountRubles)}</p>
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="rounded-3xl border border-border bg-white p-4 shadow-soft sm:p-5">

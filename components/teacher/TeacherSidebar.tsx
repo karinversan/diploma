@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock3, MessageSquare, PlayCircle, ShieldCheck, Video, X } from "lucide-react";
 
+import { studentProfile } from "@/data/student";
 import { Teacher } from "@/data/teachers";
 import {
   buildBookingId,
@@ -154,6 +155,7 @@ export function TeacherSidebar({
         courseId: bookingCourseId,
         teacherId: teacher.id,
         teacherName: teacher.name,
+        studentName: studentProfile.name,
         subject: bookingSubject,
         slot: selectedSlotValue,
         startAt,

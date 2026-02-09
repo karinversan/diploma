@@ -8,6 +8,7 @@ import { LessonCalendar } from "@/components/lessons/LessonCalendar";
 import { LessonCard } from "@/components/lessons/LessonCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { lessons, StudentLesson } from "@/data/lessons";
+import { studentProfile } from "@/data/student";
 import { getTeacherById } from "@/data/teachers";
 import { useLessonCalendar } from "@/hooks/useLessonCalendar";
 import {
@@ -168,6 +169,7 @@ export function LessonsPageClient({
   const proposedBookings = filteredBookings.filter((booking) => booking.status === "reschedule_proposed");
   const awaitingPaymentBookings = filteredBookings.filter((booking) => booking.status === "awaiting_payment");
   const declinedBookings = filteredBookings.filter((booking) => booking.status === "declined");
+  const cancelledBookings = filteredBookings.filter((booking) => booking.status === "cancelled");
   const paidBookings = filteredBookings.filter((booking) => booking.status === "paid");
 
   const bookingLessons = useMemo(() => paidBookings.map(bookingToLesson), [paidBookings]);
@@ -200,6 +202,7 @@ export function LessonsPageClient({
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       status: "pending",
+      studentName: studentProfile.name,
       amountRubles: candidateBooking.amountRubles,
       studentMessage: existing?.studentMessage ?? "Здравствуйте! Хочу записаться на это занятие.",
       teacherMessage: undefined,
@@ -257,7 +260,7 @@ export function LessonsPageClient({
   };
 
   const filteredBookingsCount =
-    pendingBookings.length + proposedBookings.length + awaitingPaymentBookings.length + declinedBookings.length;
+    pendingBookings.length + proposedBookings.length + awaitingPaymentBookings.length + declinedBookings.length + cancelledBookings.length;
 
   return (
     <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
@@ -491,6 +494,31 @@ export function LessonsPageClient({
                   </article>
                 );
               })}
+
+              {cancelledBookings.map((booking) => {
+                const status = getStatusBadge(booking.status);
+                return (
+                  <article key={booking.id} className="rounded-2xl border border-slate-200 bg-slate-100 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-foreground">{booking.teacherName}</p>
+                      <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", status.className)}>
+                        {status.label}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-700">
+                      {booking.teacherMessage ?? "Занятие отменено. Выберите новый слот или другого преподавателя."}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Link
+                        href={`/app/teachers?subject=${encodeURIComponent(booking.subject)}`}
+                        className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+                      >
+                        Выбрать новый слот
+                      </Link>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
@@ -532,6 +560,12 @@ export function LessonsPageClient({
               <span className="inline-flex items-center gap-1 text-rose-700">
                 <XCircle className="h-3.5 w-3.5" />
                 Отклонено: {declinedBookings.length}
+              </span>
+            ) : null}
+            {cancelledBookings.length > 0 ? (
+              <span className="inline-flex items-center gap-1 text-slate-700">
+                <XCircle className="h-3.5 w-3.5" />
+                Отменено: {cancelledBookings.length}
               </span>
             ) : null}
           </div>

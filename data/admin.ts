@@ -39,6 +39,7 @@ export type LessonIncident = {
 
 export type RefundTicket = {
   id: string;
+  bookingId?: string;
   invoice: string;
   studentName: string;
   amountRubles: number;

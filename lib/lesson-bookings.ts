@@ -14,6 +14,7 @@ export type LessonBookingRequest = {
   courseId: string;
   teacherId: string;
   teacherName: string;
+  studentName?: string;
   subject: string;
   slot: string;
   startAt: string;
@@ -81,6 +82,7 @@ function normalizeBooking(raw: Partial<LessonBookingRequest>): LessonBookingRequ
     courseId: raw.courseId,
     teacherId: raw.teacherId,
     teacherName: raw.teacherName,
+    studentName: typeof raw.studentName === "string" ? raw.studentName : undefined,
     subject: raw.subject,
     slot: raw.slot,
     startAt: raw.startAt,
@@ -132,6 +134,7 @@ function migrateLegacyBookings(raw: LegacyBooking[]): LessonBookingRequest[] {
       courseId: legacy.courseId,
       teacherId: legacy.teacherId,
       teacherName: legacy.teacherName,
+      studentName: "Ученик",
       subject: legacy.subject,
       slot: legacy.slot,
       startAt: legacy.startAt,

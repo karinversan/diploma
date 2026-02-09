@@ -19,6 +19,7 @@ import {
   readLessonBookings,
   updateLessonBooking
 } from "@/lib/lesson-bookings";
+import { createRefundTicket } from "@/lib/refund-tickets";
 import { cn } from "@/lib/utils";
 
 const classroomTabs = [
@@ -146,6 +147,15 @@ export function TeacherClassroomClient() {
     [bookingRequests]
   );
 
+  const isDemoRequestsMode = useMemo(
+    () =>
+      requestsForTeacher.length > 0 &&
+      requestsForTeacher.some(
+        (request) => request.teacherId !== teacherCabinetProfile.id && request.teacherName !== teacherCabinetProfile.name
+      ),
+    [requestsForTeacher]
+  );
+
   const pendingRequests = requestsForTeacher.filter((request) => request.status === "pending");
   const proposedRequests = requestsForTeacher.filter((request) => request.status === "reschedule_proposed");
   const awaitingPaymentRequests = requestsForTeacher.filter((request) => request.status === "awaiting_payment");
@@ -157,7 +167,7 @@ export function TeacherClassroomClient() {
       const date = slotMatch?.[1] ?? request.startAt.slice(0, 10);
       const startTime = slotMatch?.[2] ?? request.startAt.slice(11, 16);
       const startMinutes = parseEventMinutes(startTime);
-      const endMinutes = startMinutes + request.durationMinutes;
+      const endMinutes = Math.min(23 * 60 + 59, startMinutes + request.durationMinutes);
       const endTime = formatTimeFromMinutes(endMinutes);
 
       return {
@@ -167,7 +177,7 @@ export function TeacherClassroomClient() {
         date,
         startTime,
         endTime,
-        participantName: "Новый ученик",
+        participantName: request.studentName ?? "Ученик",
         participantAvatarUrl: "/avatars/avatar-2.svg",
         courseId: request.courseId
       };
@@ -298,13 +308,26 @@ export function TeacherClassroomClient() {
 
     if (selectedEvent.id.startsWith("booking-")) {
       const bookingId = selectedEvent.id.replace("booking-", "");
+      const relatedBooking = bookingRequests.find((request) => request.id === bookingId);
+
+      if (relatedBooking && relatedBooking.amountRubles && relatedBooking.amountRubles > 0) {
+        createRefundTicket({
+          bookingId: relatedBooking.id,
+          invoice: `#${Math.floor(1000 + Math.random() * 8999)}`,
+          studentName: relatedBooking.studentName ?? "Ученик платформы",
+          amountRubles: relatedBooking.amountRubles,
+          reason: "Отмена оплаченного занятия преподавателем"
+        });
+      }
+
       const next = updateLessonBooking(bookingId, {
         status: "cancelled",
-        teacherMessage: "Занятие отменено преподавателем. Выберите новый слот для записи."
+        teacherMessage:
+          "Занятие отменено преподавателем. Мы создали заявку на возврат, статус будет виден в разделе «Платежи»."
       });
       setBookingRequests(next);
       setTeacherActionNote(
-        `Оплаченное занятие (${formatEventDateLabel(selectedEvent.date)} ${selectedEvent.startTime}–${selectedEvent.endTime}) отменено, ученик получит уведомление.`
+        `Оплаченное занятие (${formatEventDateLabel(selectedEvent.date)} ${selectedEvent.startTime}–${selectedEvent.endTime}) отменено, заявка на возврат создана.`
       );
     } else {
       setManualCalendarEvents((prev) => prev.filter((event) => event.id !== selectedEvent.id));
@@ -425,6 +448,11 @@ export function TeacherClassroomClient() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   Здесь преподаватель подтверждает запись, предлагает перенос или отклоняет заявку.
                 </p>
+                {isDemoRequestsMode ? (
+                  <p className="mt-2 rounded-xl border border-primary/20 bg-white px-2.5 py-1.5 text-xs text-primary">
+                    Режим демо: показаны все заявки платформы, чтобы можно было протестировать сценарии подтверждения.
+                  </p>
+                ) : null}
               </div>
               <div className="text-right text-xs text-muted-foreground">
                 <p>Новых заявок: {pendingRequests.length}</p>
@@ -440,7 +468,10 @@ export function TeacherClassroomClient() {
               </div>
             ) : null}
 
-            {pendingRequests.length === 0 && proposedRequests.length === 0 && awaitingPaymentRequests.length === 0 ? (
+            {pendingRequests.length === 0 &&
+            proposedRequests.length === 0 &&
+            awaitingPaymentRequests.length === 0 &&
+            paidRequests.length === 0 ? (
               <p className="mt-3 rounded-xl border border-dashed border-primary/30 bg-white/80 px-3 py-2 text-sm text-muted-foreground">
                 Сейчас нет новых заявок. Когда ученик отправит запрос на слот, он появится здесь.
               </p>
@@ -450,7 +481,7 @@ export function TeacherClassroomClient() {
                   <article key={request.id} className="rounded-xl border border-primary/20 bg-white p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-semibold text-foreground">
-                        {request.subject} · {request.teacherName}
+                        {request.subject} · {request.studentName ?? "Ученик"}
                       </p>
                       <span
                         className={cn(
@@ -503,6 +534,22 @@ export function TeacherClassroomClient() {
                         </button>
                       </div>
                     )}
+                  </article>
+                ))}
+
+                {paidRequests.slice(0, 3).map((request) => (
+                  <article key={request.id} className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-foreground">
+                        {request.subject} · {request.studentName ?? "Ученик"}
+                      </p>
+                      <span className="rounded-full border border-emerald-300 bg-white px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                        Оплачено
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-emerald-800">
+                      {formatBookingSlotLabel(request.slot)} · занятие добавлено в календарь преподавателя.
+                    </p>
                   </article>
                 ))}
               </div>
