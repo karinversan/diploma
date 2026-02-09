@@ -1,10 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ShieldAlert, Sparkles, XCircle } from "lucide-react";
 
-import { platformKpis, tutorVerificationQueue, type TutorVerificationRequest } from "@/data/admin";
+import { platformKpis, tutorVerificationQueue } from "@/data/admin";
+import {
+  ensureTutorApplicationsSeed,
+  readTutorApplications,
+  TutorApplication,
+  updateTutorApplication
+} from "@/lib/tutor-applications";
+import { readLessonBookings } from "@/lib/lesson-bookings";
 import { cn } from "@/lib/utils";
 
 function formatDate(value: string) {
@@ -14,17 +21,48 @@ function formatDate(value: string) {
 }
 
 export default function AdminDashboardPage() {
-  const [verificationQueue, setVerificationQueue] = useState(tutorVerificationQueue);
+  const [verificationQueue, setVerificationQueue] = useState<TutorApplication[]>([]);
+  const [bookingOps, setBookingOps] = useState({ pending: 0, awaitingPayment: 0, paid: 0, declined: 0 });
+
+  useEffect(() => {
+    const seedFromData: TutorApplication[] = tutorVerificationQueue.map((request, index) => ({
+      id: request.id,
+      fullName: request.tutorName,
+      email: `tutor${index + 1}@example.com`,
+      phone: "+7 (900) 000-00-00",
+      subjects: request.subjects.join(", "),
+      experience: `${request.experienceYears} лет`,
+      source: "lead_form",
+      status: request.status,
+      adminNote: request.note,
+      createdAt: request.submittedAt,
+      updatedAt: request.submittedAt
+    }));
+
+    setVerificationQueue(ensureTutorApplicationsSeed(seedFromData));
+    const syncApplications = () => {
+      setVerificationQueue(readTutorApplications());
+      const bookings = readLessonBookings();
+      setBookingOps({
+        pending: bookings.filter((item) => item.status === "pending").length,
+        awaitingPayment: bookings.filter((item) => item.status === "awaiting_payment").length,
+        paid: bookings.filter((item) => item.status === "paid").length,
+        declined: bookings.filter((item) => item.status === "declined").length
+      });
+    };
+
+    syncApplications();
+    window.addEventListener("storage", syncApplications);
+    return () => window.removeEventListener("storage", syncApplications);
+  }, []);
 
   const pendingCount = useMemo(
     () => verificationQueue.filter((item) => item.status === "pending").length,
     [verificationQueue]
   );
 
-  const updateVerification = (requestId: string, status: TutorVerificationRequest["status"], note: string) => {
-    setVerificationQueue((prev) =>
-      prev.map((item) => (item.id === requestId ? { ...item, status, note } : item))
-    );
+  const updateVerification = (requestId: string, status: TutorApplication["status"], note: string) => {
+    setVerificationQueue(updateTutorApplication(requestId, { status, adminNote: note }));
   };
 
   return (
@@ -75,7 +113,7 @@ export default function AdminDashboardPage() {
             {verificationQueue.map((request) => (
               <article key={request.id} className="rounded-2xl border border-border bg-slate-50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-semibold text-foreground">{request.tutorName}</p>
+                  <p className="font-semibold text-foreground">{request.fullName}</p>
                   <span
                     className={cn(
                       "rounded-full px-2.5 py-1 text-xs font-semibold",
@@ -94,9 +132,9 @@ export default function AdminDashboardPage() {
                   </span>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Предметы: {request.subjects.join(", ")} · Опыт: {request.experienceYears} лет · Заявка от {formatDate(request.submittedAt)}
+                  Предметы: {request.subjects} · Опыт: {request.experience} · Заявка от {formatDate(request.createdAt)}
                 </p>
-                {request.note ? <p className="mt-1 text-xs text-muted-foreground">Комментарий: {request.note}</p> : null}
+                {request.adminNote ? <p className="mt-1 text-xs text-muted-foreground">Комментарий: {request.adminNote}</p> : null}
 
                 {request.status === "pending" ? (
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -148,6 +186,10 @@ export default function AdminDashboardPage() {
               <p>2. Контроль очереди заявок на возвраты и спорные занятия.</p>
               <p>3. Мониторинг тестовых прогонов (unit/integration/e2e) перед релизом.</p>
               <p>4. Анализ UX-метрик: конверсия в урок, удержание и завершение домашек.</p>
+              <p>
+                5. Текущие бронирования: ожидают подтверждения — {bookingOps.pending}, ожидают оплаты — {bookingOps.awaitingPayment},
+                оплачено — {bookingOps.paid}, отклонено — {bookingOps.declined}.
+              </p>
             </div>
           </article>
         </section>

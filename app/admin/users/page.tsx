@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 
 import { adminUsers, type PlatformUser } from "@/data/admin";
+import { readTutorApplications } from "@/lib/tutor-applications";
 import { cn } from "@/lib/utils";
 
 function formatDate(value: string) {
@@ -13,9 +14,21 @@ function formatDate(value: string) {
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState(adminUsers);
+  const [pendingTutorApplications, setPendingTutorApplications] = useState(0);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | PlatformUser["role"]>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | PlatformUser["status"]>("all");
+
+  useEffect(() => {
+    const syncApplications = () => {
+      const pending = readTutorApplications().filter((item) => item.status === "pending").length;
+      setPendingTutorApplications(pending);
+    };
+
+    syncApplications();
+    window.addEventListener("storage", syncApplications);
+    return () => window.removeEventListener("storage", syncApplications);
+  }, []);
 
   const filteredUsers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -107,6 +120,10 @@ export default function AdminUsersPage() {
             </select>
           </label>
         </div>
+
+        <p className="mt-3 rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-medium text-primary">
+          Заявок преподавателей на модерации: {pendingTutorApplications}
+        </p>
       </section>
 
       <section className="overflow-hidden rounded-3xl border border-border bg-white shadow-card">

@@ -6,6 +6,7 @@ import { FormEvent, useMemo, useState } from "react";
 
 import { teachers } from "@/data/teachers";
 import { resolveRouteByRole, writeDemoRole } from "@/lib/demo-role";
+import { createTutorApplication } from "@/lib/tutor-applications";
 
 type SignupFormProps = {
   initialRole: "student" | "tutor";
@@ -37,14 +38,37 @@ export function SignupForm({ initialRole, selectedTeacher }: SignupFormProps) {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const formData = new FormData(event.currentTarget);
     setIsSubmitting(true);
 
     window.setTimeout(() => {
+      if (role === "tutor") {
+        const fullName = String(formData.get("full_name") ?? "").trim();
+        const phone = String(formData.get("phone") ?? "").trim();
+        const email = String(formData.get("email") ?? "").trim();
+        const subjects = String(formData.get("subjects") ?? "").trim();
+        const experience = String(formData.get("experience") ?? "").trim();
+        const about = String(formData.get("about") ?? "").trim();
+
+        if (fullName && phone && email && subjects && experience) {
+          createTutorApplication({
+            fullName,
+            phone,
+            email,
+            subjects,
+            experience,
+            message: about || undefined,
+            source: "signup_form"
+          });
+        }
+      }
+
       setIsSubmitting(false);
       setIsSuccess(true);
       window.setTimeout(() => {
-        writeDemoRole(role === "tutor" ? "teacher" : "student");
-        router.push(resolveRouteByRole(role === "tutor" ? "teacher" : "student"));
+        const nextRole = role === "tutor" ? "teacher" : "student";
+        writeDemoRole(nextRole);
+        router.push(nextRole === "teacher" ? "/teacher/dashboard?onboarding=pending" : resolveRouteByRole(nextRole));
       }, 700);
     }, 700);
   };
@@ -90,14 +114,21 @@ export function SignupForm({ initialRole, selectedTeacher }: SignupFormProps) {
 
       {isSuccess ? (
         <div className="mt-6 rounded-2xl border border-accent/60 bg-accent/30 px-5 py-6">
-          <p className="text-lg font-semibold text-slate-900">Успешно! Аккаунт создан.</p>
-          <p className="mt-1 text-sm text-slate-700">Перенаправляем в учебный кабинет...</p>
+          <p className="text-lg font-semibold text-slate-900">
+            {role === "student" ? "Успешно! Аккаунт создан." : "Заявка преподавателя отправлена на модерацию."}
+          </p>
+          <p className="mt-1 text-sm text-slate-700">
+            {role === "student"
+              ? "Перенаправляем в учебный кабинет..."
+              : "Перенаправляем в кабинет преподавателя. Статус проверки будет показан на дашборде."}
+          </p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="mt-6 grid gap-4 sm:grid-cols-2">
           <label className="block sm:col-span-2">
             <span className="mb-2 block text-sm font-medium text-foreground">Имя и фамилия</span>
             <input
+              name="full_name"
               required
               type="text"
               placeholder="Введите имя"
@@ -108,6 +139,7 @@ export function SignupForm({ initialRole, selectedTeacher }: SignupFormProps) {
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-foreground">Электронная почта</span>
             <input
+              name="email"
               required
               type="email"
               placeholder="name@example.com"
@@ -118,6 +150,7 @@ export function SignupForm({ initialRole, selectedTeacher }: SignupFormProps) {
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-foreground">Телефон</span>
             <input
+              name="phone"
               required
               type="tel"
               placeholder="+7 (___) ___-__-__"
@@ -130,6 +163,7 @@ export function SignupForm({ initialRole, selectedTeacher }: SignupFormProps) {
               <label className="block sm:col-span-2">
                 <span className="mb-2 block text-sm font-medium text-foreground">Предметы</span>
                 <input
+                  name="subjects"
                   required
                   type="text"
                   placeholder="Например: Английский, IELTS"
@@ -140,6 +174,7 @@ export function SignupForm({ initialRole, selectedTeacher }: SignupFormProps) {
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-foreground">Опыт преподавания</span>
                 <select
+                  name="experience"
                   required
                   className="w-full rounded-2xl border border-border bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-white"
                 >
@@ -166,6 +201,7 @@ export function SignupForm({ initialRole, selectedTeacher }: SignupFormProps) {
               <label className="block sm:col-span-2">
                 <span className="mb-2 block text-sm font-medium text-foreground">Кратко о себе</span>
                 <textarea
+                  name="about"
                   rows={4}
                   placeholder="Опишите ваш подход к обучению"
                   className="w-full rounded-2xl border border-border bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-white"

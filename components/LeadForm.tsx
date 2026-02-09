@@ -6,6 +6,7 @@ import { FormEvent, useMemo, useState } from "react";
 
 import { assessmentSubjects } from "@/data/assessment";
 import { teachers } from "@/data/teachers";
+import { createTutorApplication } from "@/lib/tutor-applications";
 
 type LeadRole = "student" | "tutor";
 type ContactMethod = "call" | "messenger" | "email";
@@ -99,9 +100,27 @@ export function LeadForm({ initialRole, selectedTeacher, subjectHint, levelHint 
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const fullName = String(formData.get("full_name") ?? "").trim();
+    const phone = String(formData.get("phone") ?? "").trim();
+    const email = String(formData.get("email") ?? "").trim();
+    const tutorSubjects = String(formData.get("tutor_subjects") ?? "").trim();
+    const experience = String(formData.get("experience") ?? "").trim();
+
     setIsSubmitting(true);
 
     window.setTimeout(() => {
+      if (role === "tutor" && fullName && phone && email && tutorSubjects && experience) {
+        createTutorApplication({
+          fullName,
+          phone,
+          email,
+          subjects: tutorSubjects,
+          experience,
+          message: `Предпочтительный канал связи: ${contactMethod}`,
+          source: "lead_form"
+        });
+      }
       setIsSubmitting(false);
       setIsSubmitted(true);
     }, 700);
@@ -209,6 +228,7 @@ export function LeadForm({ initialRole, selectedTeacher, subjectHint, levelHint 
           <label className="block sm:col-span-2">
             <span className="mb-2 block text-sm font-medium text-foreground">Имя и фамилия</span>
             <input
+              name="full_name"
               required
               type="text"
               placeholder="Как к вам обращаться"
@@ -219,7 +239,8 @@ export function LeadForm({ initialRole, selectedTeacher, subjectHint, levelHint 
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-foreground">Телефон</span>
             <input
-              required={contactMethod !== "email"}
+              name="phone"
+              required={contactMethod !== "email" || role === "tutor"}
               type="tel"
               placeholder="+7 (___) ___-__-__"
               className="w-full rounded-2xl border border-border bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-white"
@@ -229,7 +250,8 @@ export function LeadForm({ initialRole, selectedTeacher, subjectHint, levelHint 
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-foreground">Электронная почта</span>
             <input
-              required={contactMethod === "email"}
+              name="email"
+              required={contactMethod === "email" || role === "tutor"}
               type="email"
               placeholder="name@example.com"
               className="w-full rounded-2xl border border-border bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-white"
@@ -325,6 +347,7 @@ export function LeadForm({ initialRole, selectedTeacher, subjectHint, levelHint 
               <label className="block sm:col-span-2">
                 <span className="mb-2 block text-sm font-medium text-foreground">Предметы и специализация</span>
                 <input
+                  name="tutor_subjects"
                   required
                   type="text"
                   placeholder="Например: Английский, IELTS, бизнес-английский"
@@ -335,6 +358,7 @@ export function LeadForm({ initialRole, selectedTeacher, subjectHint, levelHint 
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-foreground">Опыт преподавания</span>
                 <select
+                  name="experience"
                   required
                   className="w-full rounded-2xl border border-border bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-white"
                 >

@@ -12,6 +12,7 @@ import {
 import { ProgressBar } from "@/components/shared/ProgressBar";
 import { PillBadge } from "@/components/shared/PillBadge";
 import { StatCard } from "@/components/shared/StatCard";
+import { TeacherOnboardingAlert } from "@/components/teacher-cabinet/TeacherOnboardingAlert";
 
 const monthNames = [
   "января",
@@ -56,6 +57,8 @@ export default function TeacherDashboardPage() {
 
   return (
     <div className="space-y-6">
+      <TeacherOnboardingAlert />
+
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {teacherDashboardMetrics.map((metric) => (
           <StatCard key={metric.id} label={metric.label} value={metric.value} hint={metric.delta} />
