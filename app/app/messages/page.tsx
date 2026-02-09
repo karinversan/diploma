@@ -1,5 +1,4 @@
 import { MessagesPageClient } from "@/components/app/MessagesPageClient";
-import { messageThreads } from "@/data/messages";
 
 type MessagesPageProps = {
   searchParams?: {
@@ -25,9 +24,12 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
   const threadFromQuery = safeDecode(searchParams?.thread);
   const teacherFromQuery = safeDecode(searchParams?.teacher);
   const draftFromQuery = safeDecode(searchParams?.draft);
-  const threadFromTeacher = teacherFromQuery
-    ? messageThreads.find((thread) => thread.teacherId === teacherFromQuery)?.id
-    : undefined;
 
-  return <MessagesPageClient preselectedThreadId={threadFromQuery ?? threadFromTeacher} initialDraft={draftFromQuery} />;
+  return (
+    <MessagesPageClient
+      preselectedThreadId={threadFromQuery}
+      preselectedTeacherId={teacherFromQuery}
+      initialDraft={draftFromQuery}
+    />
+  );
 }

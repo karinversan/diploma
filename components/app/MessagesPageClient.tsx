@@ -4,11 +4,18 @@ import Image from "next/image";
 import { SendHorizontal } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { messageThreads } from "@/data/messages";
+import { studentProfile } from "@/data/student";
+import {
+  SharedChatThread,
+  markSharedChatThreadRead,
+  readSharedChatThreads,
+  sendMessageToSharedChatThread
+} from "@/lib/chat-threads";
 import { cn } from "@/lib/utils";
 
 type MessagesPageClientProps = {
   preselectedThreadId?: string;
+  preselectedTeacherId?: string;
   initialDraft?: string;
 };
 
@@ -18,16 +25,17 @@ function formatDate(value: string) {
   );
 }
 
-export function MessagesPageClient({ preselectedThreadId, initialDraft }: MessagesPageClientProps) {
-  const [threads, setThreads] = useState(messageThreads);
-  const [activeThreadId, setActiveThreadId] = useState<string | undefined>(preselectedThreadId ?? messageThreads[0]?.id);
+export function MessagesPageClient({ preselectedThreadId, preselectedTeacherId, initialDraft }: MessagesPageClientProps) {
+  const [threads, setThreads] = useState<SharedChatThread[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string>();
   const [composerText, setComposerText] = useState(initialDraft ?? "");
 
   useEffect(() => {
-    if (preselectedThreadId && preselectedThreadId !== activeThreadId) {
-      setActiveThreadId(preselectedThreadId);
-    }
-  }, [activeThreadId, preselectedThreadId]);
+    setThreads(readSharedChatThreads());
+    const syncThreads = () => setThreads(readSharedChatThreads());
+    window.addEventListener("storage", syncThreads);
+    return () => window.removeEventListener("storage", syncThreads);
+  }, []);
 
   useEffect(() => {
     if (initialDraft) {
@@ -35,9 +43,52 @@ export function MessagesPageClient({ preselectedThreadId, initialDraft }: Messag
     }
   }, [initialDraft]);
 
+  const personalThreads = useMemo(() => {
+    const own = threads.filter(
+      (thread) => thread.studentId === studentProfile.id || thread.studentName.toLowerCase() === studentProfile.name.toLowerCase()
+    );
+    return own.length > 0 ? own : threads;
+  }, [threads]);
+
+  const isDemoThreadsMode = useMemo(
+    () =>
+      personalThreads.length > 0 &&
+      personalThreads.some(
+        (thread) => thread.studentId !== studentProfile.id && thread.studentName.toLowerCase() !== studentProfile.name.toLowerCase()
+      ),
+    [personalThreads]
+  );
+
+  useEffect(() => {
+    if (personalThreads.length === 0) {
+      setActiveThreadId(undefined);
+      return;
+    }
+
+    if (activeThreadId && personalThreads.some((thread) => thread.id === activeThreadId)) {
+      return;
+    }
+
+    const byThreadId = preselectedThreadId ? personalThreads.find((thread) => thread.id === preselectedThreadId) : undefined;
+    const byTeacher = preselectedTeacherId ? personalThreads.find((thread) => thread.teacherId === preselectedTeacherId) : undefined;
+    const byLegacyPattern = preselectedThreadId
+      ? personalThreads.find((thread) => thread.id.includes(preselectedThreadId.replace("thread-", "")))
+      : undefined;
+
+    const target = byThreadId ?? byTeacher ?? byLegacyPattern ?? personalThreads[0];
+    setActiveThreadId(target?.id);
+  }, [activeThreadId, personalThreads, preselectedTeacherId, preselectedThreadId]);
+
+  useEffect(() => {
+    if (!activeThreadId) {
+      return;
+    }
+    setThreads(markSharedChatThreadRead(activeThreadId, "student"));
+  }, [activeThreadId]);
+
   const activeThread = useMemo(
-    () => threads.find((thread) => thread.id === activeThreadId) ?? threads[0],
-    [activeThreadId, threads]
+    () => personalThreads.find((thread) => thread.id === activeThreadId) ?? personalThreads[0],
+    [activeThreadId, personalThreads]
   );
 
   const sendMessage = () => {
@@ -47,30 +98,22 @@ export function MessagesPageClient({ preselectedThreadId, initialDraft }: Messag
       return;
     }
 
-    const now = new Date().toISOString();
-    const newMessage = {
-      id: `msg-${Date.now()}`,
-      sender: "student" as const,
-      text,
-      sentAt: now
-    };
+    const result = sendMessageToSharedChatThread({
+      threadId: activeThread.id,
+      teacherId: activeThread.teacherId,
+      teacherName: activeThread.teacherName,
+      teacherAvatarUrl: activeThread.teacherAvatarUrl,
+      studentId: activeThread.studentId,
+      studentName: activeThread.studentName,
+      studentAvatarUrl: activeThread.studentAvatarUrl,
+      subject: activeThread.subject,
+      courseTitle: activeThread.courseTitle,
+      sender: "student",
+      text
+    });
 
-    setThreads((prev) =>
-      prev.map((thread) => {
-        if (thread.id !== activeThread.id) {
-          return thread;
-        }
-
-        return {
-          ...thread,
-          messages: [...thread.messages, newMessage],
-          lastMessage: text,
-          updatedAt: now,
-          unreadCount: 0
-        };
-      })
-    );
-
+    setThreads(result.threads);
+    setActiveThreadId(result.thread.id);
     setComposerText("");
   };
 
@@ -84,9 +127,14 @@ export function MessagesPageClient({ preselectedThreadId, initialDraft }: Messag
       <aside className="rounded-3xl border border-border bg-slate-50 p-3">
         <h1 className="px-2 text-xl font-semibold text-foreground">Сообщения</h1>
         <p className="px-2 pt-1 text-sm text-muted-foreground">Чаты с преподавателями</p>
+        {isDemoThreadsMode ? (
+          <p className="mx-2 mt-2 rounded-xl border border-primary/20 bg-white px-2 py-1.5 text-xs text-primary">
+            Режим демо: отображаются общие диалоги платформы.
+          </p>
+        ) : null}
 
         <div className="mt-3 space-y-1">
-          {threads.map((thread) => {
+          {personalThreads.map((thread) => {
             const isActive = thread.id === activeThread?.id;
 
             return (
@@ -109,9 +157,9 @@ export function MessagesPageClient({ preselectedThreadId, initialDraft }: Messag
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-semibold">{thread.teacherName}</span>
-                    {thread.unreadCount > 0 ? (
+                    {thread.unreadForStudent > 0 ? (
                       <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold text-slate-900">
-                        {thread.unreadCount}
+                        {thread.unreadForStudent}
                       </span>
                     ) : null}
                   </span>
@@ -139,7 +187,7 @@ export function MessagesPageClient({ preselectedThreadId, initialDraft }: Messag
                 />
                 <div>
                   <p className="text-sm font-semibold text-foreground">{activeThread.teacherName}</p>
-                  <p className="text-xs text-muted-foreground">Предмет: {activeThread.subject}</p>
+                  <p className="text-xs text-muted-foreground">Тема: {activeThread.subject}</p>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">Последнее обновление: {formatDate(activeThread.updatedAt)}</p>
