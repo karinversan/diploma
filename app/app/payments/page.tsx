@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { CheckCircle2, Filter, Landmark, Plus, Search, Wifi } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -9,7 +10,6 @@ import {
   paymentStatusFilters,
   paymentTransactions,
   type PaymentCard,
-  type PaymentSettingsTabId,
   type PaymentTransactionStatus
 } from "@/data/payments";
 import { cn } from "@/lib/utils";
@@ -24,16 +24,9 @@ const statusBadgeStyles: Record<PaymentTransactionStatus, string> = {
 };
 
 const cardThemeStyles: Record<PaymentCard["theme"], string> = {
-  dark: "bg-[radial-gradient(circle_at_20%_10%,rgba(255,255,255,0.12),transparent_55%),#11131c] text-white",
+  dark: "bg-[radial-gradient(circle_at_20%_10%,rgba(255,255,255,0.14),rgba(255,255,255,0)_55%),linear-gradient(155deg,#1a1f2d,#0f1320)] text-white",
   purple: "bg-[radial-gradient(circle_at_15%_10%,rgba(255,255,255,0.35),transparent_48%),linear-gradient(135deg,#c8b3ff,#a07cff)] text-slate-900",
   light: "bg-[linear-gradient(145deg,#f8f9ff,#eef2ff)] text-slate-900"
-};
-
-const paymentTabDescription: Record<Exclude<PaymentSettingsTabId, "payment">, string> = {
-  details: "Личные данные редактируются в разделе «Настройки профиля».",
-  profile: "Настройка профиля и целей обучения доступна в разделе «Профиль».",
-  password: "Смена пароля подключается при серверной авторизации.",
-  notifications: "Параметры уведомлений доступны в разделе «Уведомления»."
 };
 
 function formatAmount(amount: number) {
@@ -95,7 +88,6 @@ function PaymentCardTile({
 }
 
 export default function PaymentsPage() {
-  const [activeTab, setActiveTab] = useState<PaymentSettingsTabId>("payment");
   const [cards, setCards] = useState(paymentCards);
   const [selectedCardId, setSelectedCardId] = useState(paymentCards.find((card) => card.isPrimary)?.id ?? paymentCards[0]?.id ?? "");
   const [searchValue, setSearchValue] = useState("");
@@ -200,12 +192,12 @@ export default function PaymentsPage() {
 
         <nav className="mt-6 flex gap-1 overflow-x-auto border-b border-border pb-0.5" aria-label="Разделы настроек оплаты">
           {paymentSettingsTabs.map((tab) => {
-            const isActive = tab.id === activeTab;
+            const isActive = tab.id === "payment";
+            const href = tab.id === "payment" ? "/app/payments" : `/app/settings?tab=${tab.id}`;
             return (
-              <button
+              <Link
                 key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
+                href={href}
                 className={cn(
                   "whitespace-nowrap rounded-t-2xl px-4 py-3 text-sm font-semibold transition",
                   isActive ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"
@@ -213,18 +205,12 @@ export default function PaymentsPage() {
                 aria-current={isActive ? "page" : undefined}
               >
                 {tab.label}
-              </button>
+              </Link>
             );
           })}
         </nav>
 
-        {activeTab !== "payment" ? (
-          <section className="mt-6 rounded-3xl border border-dashed border-border bg-slate-50 p-6">
-            <h2 className="text-lg font-semibold text-foreground">Раздел в демо-версии</h2>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{paymentTabDescription[activeTab]}</p>
-          </section>
-        ) : (
-          <div className="mt-6 space-y-6">
+        <div className="mt-6 space-y-6">
             <section className="rounded-3xl border border-border bg-white p-4 shadow-soft sm:p-5">
               <h2 className="text-xl font-semibold text-foreground">Платежные данные</h2>
               <p className="mt-1 text-sm text-muted-foreground">Выберите основную карту и добавляйте новые способы оплаты для занятий.</p>
@@ -508,8 +494,7 @@ export default function PaymentsPage() {
               </p>
               <p className="mt-1 text-xs text-muted-foreground">При следующих покупках она будет подставляться автоматически (демо-логика).</p>
             </section>
-          </div>
-        )}
+        </div>
       </section>
     </div>
   );
