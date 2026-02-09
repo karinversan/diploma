@@ -1,12 +1,33 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
 
+import { paymentSettingsTabs, type PaymentSettingsTabId } from "@/data/payments";
 import { studentProfile } from "@/data/student";
+import { cn } from "@/lib/utils";
 
 const levelOptions = ["Начинающий", "Средний", "Продвинутый"] as const;
 
+const settingsTabDescription: Record<Exclude<PaymentSettingsTabId, "payment" | "details">, string> = {
+  profile: "Раздел профиля объединен с личными данными в демо-версии. Здесь можно редактировать учебные цели и контакты.",
+  password: "Смена пароля подключается после серверной авторизации и реального входа.",
+  notifications: "Параметры уведомлений настраиваются в демо в блоке ниже."
+};
+
+function getSettingsTab(value: string | null): Exclude<PaymentSettingsTabId, "payment"> {
+  if (value === "profile" || value === "password" || value === "notifications") {
+    return value;
+  }
+
+  return "details";
+}
+
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
+  const activeTab = getSettingsTab(searchParams.get("tab"));
+
   const [name, setName] = useState(studentProfile.name);
   const [email, setEmail] = useState(studentProfile.email);
   const [timezone, setTimezone] = useState(studentProfile.timezone);
@@ -28,8 +49,40 @@ export default function SettingsPage() {
       <section className="rounded-3xl border border-border bg-white p-5 shadow-card sm:p-6">
         <h1 className="text-3xl font-semibold text-foreground">Настройки</h1>
         <p className="mt-1 text-sm text-muted-foreground">Профиль, учебные цели и параметры уведомлений</p>
+
+        <nav className="mt-5 flex gap-1 overflow-x-auto border-b border-border pb-0.5" aria-label="Разделы настроек">
+          {paymentSettingsTabs.map((tab) => {
+            const isActive = tab.id === activeTab;
+            const href = tab.id === "payment" ? "/app/payments" : `/app/settings?tab=${tab.id}`;
+            return (
+              <Link
+                key={tab.id}
+                href={href}
+                className={cn(
+                  "whitespace-nowrap rounded-t-2xl px-4 py-3 text-sm font-semibold transition",
+                  isActive ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"
+                )}
+                aria-current={isActive ? "page" : undefined}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
+        </nav>
       </section>
 
+      {activeTab !== "details" ? (
+        <section className="rounded-3xl border border-dashed border-border bg-slate-50 p-6">
+          <h2 className="text-lg font-semibold text-foreground">Раздел в демо-версии</h2>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{settingsTabDescription[activeTab]}</p>
+          <Link
+            href="/app/settings?tab=details"
+            className="mt-4 inline-flex rounded-full border border-border bg-white px-4 py-2 text-sm font-semibold text-foreground"
+          >
+            Вернуться к личным данным
+          </Link>
+        </section>
+      ) : (
       <form onSubmit={handleSubmit} className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
         <section className="rounded-3xl border border-border bg-white p-5 shadow-card sm:p-6">
           <h2 className="text-lg font-semibold text-foreground">Профиль</h2>
@@ -141,6 +194,7 @@ export default function SettingsPage() {
           {isSaved ? <p className="text-center text-sm font-medium text-emerald-700">Изменения сохранены (демо).</p> : null}
         </section>
       </form>
+      )}
     </div>
   );
 }
