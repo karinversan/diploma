@@ -38,7 +38,7 @@ export function AppShell({ children }: AppShellProps) {
   if (isLiveLessonRoom) {
     return (
       <div className="min-h-screen bg-[#d3d8e3] p-2 sm:p-3 lg:p-4">
-        <main className="mx-auto max-w-[1680px]">{children}</main>
+        <main className="w-full">{children}</main>
       </div>
     );
   }

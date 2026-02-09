@@ -328,7 +328,30 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const [workspaceWidthRatio, setWorkspaceWidthRatio] = useState(58);
   const [isResizingSplit, setIsResizingSplit] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(1920);
+  const [splitContainerWidth, setSplitContainerWidth] = useState(0);
+  const isDesktopSplit = viewportWidth >= 1024 && isWorkspaceVisible && isVideoVisible;
+  const workspaceMinWidthPx = isSupportPanelOpen ? (viewportWidth >= 1700 ? 700 : viewportWidth >= 1440 ? 620 : 560) : viewportWidth >= 1600 ? 620 : 520;
+  const videoMinWidthPx = isSupportPanelOpen ? 300 : 340;
+  const splitHandleWidthPx = isDesktopSplit ? 8 : 0;
+  const availableSplitWidthPx = Math.max(1, splitContainerWidth - splitHandleWidthPx);
+  const splitBounds = useMemo(() => {
+    if (!isDesktopSplit) {
+      return { minRatio: 38, maxRatio: 86 };
+    }
 
+    let minRatio = clamp((workspaceMinWidthPx / availableSplitWidthPx) * 100, 32, 94);
+    let maxRatio = clamp(((availableSplitWidthPx - videoMinWidthPx) / availableSplitWidthPx) * 100, 36, 96);
+
+    if (minRatio >= maxRatio) {
+      const fallback = isSupportPanelOpen ? 66 : 58;
+      minRatio = fallback - 1;
+      maxRatio = fallback + 1;
+    }
+
+    return { minRatio, maxRatio };
+  }, [availableSplitWidthPx, isDesktopSplit, isSupportPanelOpen, videoMinWidthPx, workspaceMinWidthPx]);
+  const effectiveWorkspaceRatio = clamp(workspaceWidthRatio, splitBounds.minRatio, splitBounds.maxRatio);
   const boardViewportRef = useRef<HTMLDivElement | null>(null);
   const boardInteractionRef = useRef<BoardInteraction>(null);
   const [boardTool, setBoardTool] = useState<BoardTool>("pan");
@@ -382,6 +405,46 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
   }, [copiedRoomId]);
 
   useEffect(() => {
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthorized) {
+      return;
+    }
+
+    const container = splitContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const updateWidth = () => {
+      setSplitContainerWidth(container.getBoundingClientRect().width);
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateWidth();
+    });
+
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, [isAuthorized, isSupportPanelOpen, isWorkspaceVisible, isVideoVisible, viewportWidth]);
+
+  useEffect(() => {
     if (!isResizingSplit) {
       return;
     }
@@ -398,7 +461,7 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
       }
 
       const next = ((event.clientX - rect.left) / rect.width) * 100;
-      setWorkspaceWidthRatio(clamp(next, 38, 72));
+      setWorkspaceWidthRatio(clamp(next, splitBounds.minRatio, splitBounds.maxRatio));
     };
 
     const handlePointerUp = () => {
@@ -416,7 +479,7 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
-  }, [isResizingSplit]);
+  }, [isResizingSplit, splitBounds.maxRatio, splitBounds.minRatio]);
 
   useEffect(() => {
     if (!isWorkspaceVisible || !isVideoVisible) {
@@ -490,6 +553,14 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
       setAreParticipantTilesVisible(false);
     }
   }, [isVideoOnlyMode]);
+
+  useEffect(() => {
+    if (!isWorkspaceVisible || !isVideoVisible) {
+      return;
+    }
+
+    setWorkspaceWidthRatio((prev) => clamp(prev, splitBounds.minRatio, splitBounds.maxRatio));
+  }, [isVideoVisible, isWorkspaceVisible, splitBounds.maxRatio, splitBounds.minRatio]);
 
   const handleSendMessage = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -969,11 +1040,11 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
                 >
 	                {isWorkspaceVisible ? (
 	                  <section
-                    className="flex min-h-0 min-w-0 w-full"
-                    style={isVideoVisible ? { flex: `0 1 ${workspaceWidthRatio}%` } : { flex: "1 1 auto" }}
+                    className="min-h-0 min-w-0 w-full"
+                    style={isVideoVisible ? { flex: `0 1 ${effectiveWorkspaceRatio}%` } : { flex: "1 1 auto" }}
                   >
 	                  {activeWorkspace === "board" ? (
-                    <article className="flex h-full flex-col rounded-[1.4rem] border border-border bg-slate-50/70 p-3">
+                    <article className="flex h-full w-full min-w-0 flex-col rounded-[1.4rem] border border-border bg-slate-50/70 p-3">
                       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-white p-2">
                         {[
                           { id: "pan", label: "Панорама", icon: Move },
@@ -1151,7 +1222,7 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
                       ) : null}
                     </article>
                   ) : (
-                    <article className="flex h-full flex-col rounded-[1.4rem] border border-border bg-slate-50/70 p-3">
+                    <article className="flex h-full w-full min-w-0 flex-col rounded-[1.4rem] border border-border bg-slate-50/70 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-white p-3">
                         <div>
                           <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -1270,9 +1341,9 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
 	                  <section
                     className={cn(
                       "flex min-h-0 min-w-0 w-full",
-                      isVideoStandaloneMode ? "mx-auto h-full max-w-[980px] items-center justify-center" : ""
+                      isVideoStandaloneMode ? "mx-auto h-full max-w-[980px] items-center justify-center self-center" : ""
                     )}
-                    style={isWorkspaceVisible ? { flex: `1 1 ${100 - workspaceWidthRatio}%` } : { flex: "1 1 auto" }}
+                    style={isWorkspaceVisible ? { flex: `1 1 ${100 - effectiveWorkspaceRatio}%` } : { flex: "1 1 auto" }}
                   >
                   <article className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[1.4rem] border border-slate-700 bg-slate-900 p-3 text-white shadow-soft">
                     <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-2">
