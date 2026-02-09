@@ -21,6 +21,7 @@ import {
   readLessonBookings,
   upsertLessonBooking
 } from "@/lib/lesson-bookings";
+import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { studentProfile } from "@/data/student";
 import { cn } from "@/lib/utils";
 
@@ -250,6 +251,7 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
         courseId: course.id,
         teacherId: selectedTeacher.teacher.id,
         teacherName: selectedTeacher.teacher.name,
+        studentId: studentProfile.id,
         studentName: studentProfile.name,
         subject: course.title,
         slot: selectedSlot.slotValue,
@@ -264,6 +266,21 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
         proposedSlot: undefined,
         source: "course_dialog"
       });
+
+      if (!existing) {
+        sendMessageToSharedChatThread({
+          teacherId: selectedTeacher.teacher.id,
+          teacherName: selectedTeacher.teacher.name,
+          teacherAvatarUrl: selectedTeacher.teacher.avatarUrl,
+          studentId: studentProfile.id,
+          studentName: studentProfile.name,
+          studentAvatarUrl: studentProfile.avatarUrl,
+          subject: course.category,
+          courseTitle: course.title,
+          sender: "student",
+          text: `Здравствуйте! Отправил(а) заявку на созвон по курсу «${course.title}» на ${selectedSlot.dateLabel} в ${selectedSlot.time}.`
+        });
+      }
 
       setBookedSlotKeys((prev) => {
         const nextSet = new Set(prev);

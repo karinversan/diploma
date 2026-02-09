@@ -14,6 +14,7 @@ import {
   readLessonBookings,
   upsertLessonBooking
 } from "@/lib/lesson-bookings";
+import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 
 import { SelectedScheduleSlot } from "@/components/teacher/SchedulePicker";
 
@@ -155,6 +156,7 @@ export function TeacherSidebar({
         courseId: bookingCourseId,
         teacherId: teacher.id,
         teacherName: teacher.name,
+        studentId: studentProfile.id,
         studentName: studentProfile.name,
         subject: bookingSubject,
         slot: selectedSlotValue,
@@ -169,6 +171,21 @@ export function TeacherSidebar({
         proposedSlot: undefined,
         source: "teacher_profile"
       });
+
+      if (!existing) {
+        sendMessageToSharedChatThread({
+          teacherId: teacher.id,
+          teacherName: teacher.name,
+          teacherAvatarUrl: teacher.avatarUrl,
+          studentId: studentProfile.id,
+          studentName: studentProfile.name,
+          studentAvatarUrl: studentProfile.avatarUrl,
+          subject: bookingSubject,
+          courseTitle: bookingSubject,
+          sender: "student",
+          text: bookingDraft.trim() || createDefaultDraft(teacher, selectedSlot)
+        });
+      }
 
       setBookingNotice({
         kind: "success",

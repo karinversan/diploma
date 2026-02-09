@@ -13,12 +13,15 @@ import {
   teacherCourses,
   teacherStudents
 } from "@/data/teacher-cabinet";
+import { studentProfile } from "@/data/student";
+import { getTeacherById } from "@/data/teachers";
 import {
   formatBookingSlotLabel,
   LessonBookingRequest,
   readLessonBookings,
   updateLessonBooking
 } from "@/lib/lesson-bookings";
+import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { createRefundTicket } from "@/lib/refund-tickets";
 import { cn } from "@/lib/utils";
 
@@ -100,6 +103,15 @@ function formatTimeFromMinutes(totalMinutes: number) {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function createStudentIdFallback(studentName: string | undefined, requestId: string) {
+  if (!studentName) {
+    return `student-${requestId.slice(-6)}`;
+  }
+
+  const normalized = studentName.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-zа-я0-9_-]/gi, "");
+  return normalized ? `student-${normalized}` : `student-${requestId.slice(-6)}`;
 }
 
 export function TeacherClassroomClient() {
@@ -247,13 +259,41 @@ export function TeacherClassroomClient() {
     return { startMinute, endMinute, markers };
   }, [weekEvents]);
 
+  const notifyStudentByChat = (request: LessonBookingRequest, text: string) => {
+    const teacherFromCatalog = getTeacherById(request.teacherId);
+    const studentId = resolveRequestStudentId(request);
+    const studentAvatarUrl = request.studentName === studentProfile.name ? studentProfile.avatarUrl : "/avatars/avatar-3.svg";
+
+    sendMessageToSharedChatThread({
+      teacherId: request.teacherId,
+      teacherName: request.teacherName,
+      teacherAvatarUrl: teacherFromCatalog?.avatarUrl ?? teacherCabinetProfile.avatarUrl,
+      studentId,
+      studentName: request.studentName ?? "Ученик",
+      studentAvatarUrl,
+      subject: request.subject,
+      courseTitle: request.subject,
+      sender: "teacher",
+      text
+    });
+  };
+
+  const resolveRequestStudentId = (request: LessonBookingRequest) =>
+    request.studentId ??
+    (request.studentName === studentProfile.name ? studentProfile.id : createStudentIdFallback(request.studentName, request.id));
+
   const confirmRequest = (request: LessonBookingRequest) => {
+    const teacherMessage = "Слот подтвержден. Для фиксации в расписании ученик должен оплатить занятие.";
     const next = updateLessonBooking(request.id, {
       status: "awaiting_payment",
-      teacherMessage: "Слот подтвержден. Для фиксации в расписании ученик должен оплатить занятие.",
+      teacherMessage,
       proposedSlot: undefined
     });
     setBookingRequests(next);
+    notifyStudentByChat(
+      request,
+      `Подтвердил(а) ваш слот ${formatBookingSlotLabel(request.slot)}. Следующий шаг: оплата в разделе «Платежи».`
+    );
     setTeacherActionNote(
       `Заявка на ${formatBookingSlotLabel(request.slot)} подтверждена. Теперь ученик увидит кнопку оплаты в разделе «Занятия».`
     );
@@ -272,15 +312,18 @@ export function TeacherClassroomClient() {
       teacherMessage: `Предлагаю перенос на ${formatBookingSlotLabel(proposedSlot)}.`
     });
     setBookingRequests(next);
+    notifyStudentByChat(request, `Предлагаю перенести занятие на ${formatBookingSlotLabel(proposedSlot)}. Подтвердите перенос в разделе «Занятия».`);
     setTeacherActionNote(`По заявке отправлен перенос на ${formatBookingSlotLabel(proposedSlot)}.`);
   };
 
   const declineRequest = (request: LessonBookingRequest) => {
+    const teacherMessage = "Слот уже недоступен. Выберите, пожалуйста, другой вариант времени.";
     const next = updateLessonBooking(request.id, {
       status: "declined",
-      teacherMessage: "Слот уже недоступен. Выберите, пожалуйста, другой вариант времени."
+      teacherMessage
     });
     setBookingRequests(next);
+    notifyStudentByChat(request, "К сожалению, выбранный слот недоступен. Пожалуйста, выберите другое время.");
     setTeacherActionNote("Заявка отклонена с комментарием преподавателя.");
   };
 
@@ -326,6 +369,12 @@ export function TeacherClassroomClient() {
           "Занятие отменено преподавателем. Мы создали заявку на возврат, статус будет виден в разделе «Платежи»."
       });
       setBookingRequests(next);
+      if (relatedBooking) {
+        notifyStudentByChat(
+          relatedBooking,
+          "Занятие отменено преподавателем. Мы создали заявку на возврат, статус можно отслеживать в разделе «Платежи»."
+        );
+      }
       setTeacherActionNote(
         `Оплаченное занятие (${formatEventDateLabel(selectedEvent.date)} ${selectedEvent.startTime}–${selectedEvent.endTime}) отменено, заявка на возврат создана.`
       );
@@ -508,7 +557,15 @@ export function TeacherClassroomClient() {
                       <p className="mt-1 text-xs text-muted-foreground">Сообщение ученика: {request.studentMessage}</p>
                     ) : null}
                     {request.status === "awaiting_payment" ? (
-                      <p className="mt-2 text-xs text-emerald-700">Слот подтвержден. Ожидаем оплату от ученика.</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <p className="text-xs text-emerald-700">Слот подтвержден. Ожидаем оплату от ученика.</p>
+                        <Link
+                          href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(request))}`}
+                          className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+                        >
+                          Открыть чат
+                        </Link>
+                      </div>
                     ) : (
                       <div className="mt-2 flex flex-wrap gap-2">
                         <button
@@ -532,6 +589,12 @@ export function TeacherClassroomClient() {
                         >
                           Отклонить
                         </button>
+                        <Link
+                          href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(request))}`}
+                          className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+                        >
+                          Открыть чат
+                        </Link>
                       </div>
                     )}
                   </article>
@@ -550,6 +613,14 @@ export function TeacherClassroomClient() {
                     <p className="mt-1 text-xs text-emerald-800">
                       {formatBookingSlotLabel(request.slot)} · занятие добавлено в календарь преподавателя.
                     </p>
+                    <div className="mt-2">
+                      <Link
+                        href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(request))}`}
+                        className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+                      >
+                        Написать ученику
+                      </Link>
+                    </div>
                   </article>
                 ))}
               </div>

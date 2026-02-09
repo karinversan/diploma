@@ -55,7 +55,7 @@ export function LessonCard({ lesson }: LessonCardProps) {
 
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            href={`/app/messages?thread=${lesson.chatThreadId}`}
+            href={`/app/messages?thread=${lesson.chatThreadId}&teacher=${lesson.teacherId}`}
             className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-4 py-2 text-xs font-semibold text-foreground transition hover:border-primary"
           >
             <MessageSquare className="h-3.5 w-3.5" />

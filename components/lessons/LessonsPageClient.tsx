@@ -20,6 +20,7 @@ import {
   upsertLessonBooking,
   updateLessonBooking
 } from "@/lib/lesson-bookings";
+import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { cn } from "@/lib/utils";
 
 type LessonTab = "upcoming" | "completed";
@@ -38,6 +39,14 @@ type InlineNotice = {
   description: string;
 };
 
+type BookingTimelineItem = {
+  id: string;
+  title: string;
+  description: string;
+  createdAt: string;
+  tone: "neutral" | "primary" | "success" | "danger";
+};
+
 function bookingToLesson(booking: LessonBookingRequest): StudentLesson {
   const lessonTime = new Date(booking.startAt).getTime();
   const now = Date.now();
@@ -53,7 +62,7 @@ function bookingToLesson(booking: LessonBookingRequest): StudentLesson {
     durationMinutes: booking.durationMinutes,
     status,
     joinUrl: `/app/lessons?booking=${encodeURIComponent(booking.id)}`,
-    chatThreadId: `thread-${booking.teacherId}`,
+    chatThreadId: `thread-${booking.teacherId}-${booking.studentId ?? studentProfile.id}`,
     summarySnippet: "Для забронированных уроков ИИ-конспект появится после завершения занятия.",
     transcriptSnippet: "Транскрипт формируется автоматически после урока.",
     recommendations: ["Подготовьте 2–3 вопроса к занятию", "Откройте модуль перед уроком для быстрого повторения"],
@@ -86,6 +95,92 @@ function getStatusBadge(status: LessonBookingRequest["status"]) {
     return { label: "Отменено", className: "border-slate-300 bg-slate-100 text-slate-700" };
   }
   return { label: "Подтверждено", className: "border-emerald-300 bg-emerald-50 text-emerald-800" };
+}
+
+function formatTimelineDate(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "сейчас";
+  }
+
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+  return `${day}.${month} ${hours}:${minutes}`;
+}
+
+function buildBookingTimeline(booking: LessonBookingRequest): BookingTimelineItem[] {
+  const timeline: BookingTimelineItem[] = [
+    {
+      id: `${booking.id}-created`,
+      title: "Заявка отправлена",
+      description: `Слот: ${formatBookingSlotLabel(booking.slot)}.`,
+      createdAt: booking.createdAt,
+      tone: "neutral"
+    }
+  ];
+
+  if (booking.status === "reschedule_proposed") {
+    timeline.push({
+      id: `${booking.id}-reschedule`,
+      title: "Предложен перенос",
+      description: booking.proposedSlot
+        ? `Новый слот: ${formatBookingSlotLabel(booking.proposedSlot)}.`
+        : booking.teacherMessage ?? "Преподаватель предложил перенос.",
+      createdAt: booking.updatedAt,
+      tone: "primary"
+    });
+  }
+
+  if (booking.status === "awaiting_payment") {
+    timeline.push({
+      id: `${booking.id}-approved`,
+      title: "Слот подтвержден преподавателем",
+      description: booking.teacherMessage ?? "Оплатите урок для фиксации в расписании.",
+      createdAt: booking.updatedAt,
+      tone: "primary"
+    });
+  }
+
+  if (booking.status === "paid") {
+    timeline.push({
+      id: `${booking.id}-approved`,
+      title: "Слот подтвержден",
+      description: booking.teacherMessage ?? "Урок подтвержден преподавателем.",
+      createdAt: booking.updatedAt,
+      tone: "primary"
+    });
+    timeline.push({
+      id: `${booking.id}-paid`,
+      title: "Оплата прошла успешно",
+      description: "Занятие добавлено в календарь.",
+      createdAt: booking.paidAt ?? booking.updatedAt,
+      tone: "success"
+    });
+  }
+
+  if (booking.status === "declined") {
+    timeline.push({
+      id: `${booking.id}-declined`,
+      title: "Заявка отклонена",
+      description: booking.teacherMessage ?? "Преподаватель отклонил выбранный слот.",
+      createdAt: booking.updatedAt,
+      tone: "danger"
+    });
+  }
+
+  if (booking.status === "cancelled") {
+    timeline.push({
+      id: `${booking.id}-cancelled`,
+      title: "Заявка отменена",
+      description: booking.teacherMessage ?? "Занятие отменено.",
+      createdAt: booking.updatedAt,
+      tone: "danger"
+    });
+  }
+
+  return timeline.sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
 }
 
 export function LessonsPageClient({
@@ -153,6 +248,11 @@ export function LessonsPageClient({
     return bookings.find((booking) => booking.id === selectedBookingId);
   }, [bookings, selectedBookingId]);
 
+  const selectedBookingTimeline = useMemo(
+    () => (selectedBooking ? buildBookingTimeline(selectedBooking) : []),
+    [selectedBooking]
+  );
+
   const filteredBookings = useMemo(() => {
     return bookings.filter((booking) => {
       if (selectedCourse && booking.courseId !== selectedCourse) {
@@ -196,19 +296,36 @@ export function LessonsPageClient({
 
     const now = new Date().toISOString();
     const existing = bookings.find((booking) => booking.id === candidateBooking.id);
+    const studentMessageText = existing?.studentMessage ?? "Здравствуйте! Хочу записаться на это занятие.";
 
     const next = upsertLessonBooking({
       ...candidateBooking,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       status: "pending",
+      studentId: studentProfile.id,
       studentName: studentProfile.name,
       amountRubles: candidateBooking.amountRubles,
-      studentMessage: existing?.studentMessage ?? "Здравствуйте! Хочу записаться на это занятие.",
+      studentMessage: studentMessageText,
       teacherMessage: undefined,
       proposedSlot: undefined,
       source: "lessons_page"
     });
+
+    if (!existing) {
+      sendMessageToSharedChatThread({
+        teacherId: candidateBooking.teacherId,
+        teacherName: candidateBooking.teacherName,
+        teacherAvatarUrl: teacher?.avatarUrl,
+        studentId: studentProfile.id,
+        studentName: studentProfile.name,
+        studentAvatarUrl: studentProfile.avatarUrl,
+        subject: candidateBooking.subject,
+        courseTitle: candidateBooking.subject,
+        sender: "student",
+        text: studentMessageText
+      });
+    }
 
     setBookings(next);
     setNotice({
@@ -351,6 +468,37 @@ export function LessonsPageClient({
                 >
                   Оплатить занятие
                 </Link>
+              ) : null}
+
+              {selectedBookingTimeline.length > 0 ? (
+                <div className="mt-3 rounded-xl border border-primary/20 bg-white p-3 text-foreground">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">История заявки</p>
+                  <ol className="mt-2 space-y-2">
+                    {selectedBookingTimeline.map((step) => (
+                      <li key={step.id} className="flex items-start gap-2">
+                        <span
+                          className={cn(
+                            "mt-1 h-2.5 w-2.5 rounded-full",
+                            step.tone === "success"
+                              ? "bg-emerald-500"
+                              : step.tone === "danger"
+                                ? "bg-rose-500"
+                                : step.tone === "primary"
+                                  ? "bg-primary"
+                                  : "bg-slate-400"
+                          )}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-foreground">{step.title}</span>
+                            <span className="text-[11px] text-muted-foreground">{formatTimelineDate(step.createdAt)}</span>
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-muted-foreground">{step.description}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
               ) : null}
             </div>
           ) : null}

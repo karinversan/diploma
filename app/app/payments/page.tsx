@@ -15,8 +15,10 @@ import {
   type PaymentTransactionStatus
 } from "@/data/payments";
 import { type RefundTicket } from "@/data/admin";
+import { studentProfile } from "@/data/student";
 import { formatBookingSlotLabel, LessonBookingRequest, readLessonBookings, updateLessonBooking } from "@/lib/lesson-bookings";
 import { readRefundTickets } from "@/lib/refund-tickets";
+import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 5;
@@ -289,6 +291,18 @@ export default function PaymentsPage() {
     });
 
     setLessonBookings(nextBookings);
+
+    sendMessageToSharedChatThread({
+      teacherId: selectedLessonBooking.teacherId,
+      teacherName: selectedLessonBooking.teacherName,
+      studentId: selectedLessonBooking.studentId ?? studentProfile.id,
+      studentName: selectedLessonBooking.studentName ?? studentProfile.name,
+      studentAvatarUrl: studentProfile.avatarUrl,
+      subject: selectedLessonBooking.subject,
+      courseTitle: selectedLessonBooking.subject,
+      sender: "student",
+      text: `Оплатил(а) занятие ${formatBookingSlotLabel(selectedLessonBooking.slot)}. Подтвердите, пожалуйста, что всё в силе.`
+    });
 
     if (selectedCard) {
       const nextTransaction: PaymentTransaction = {
