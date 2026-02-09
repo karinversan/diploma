@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, Filter, Landmark, Plus, Search, Wifi } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { CheckCircle2, Filter, Landmark, Plus, Search, WalletCards, Wifi } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
@@ -10,8 +11,10 @@ import {
   paymentStatusFilters,
   paymentTransactions,
   type PaymentCard,
+  type PaymentTransaction,
   type PaymentTransactionStatus
 } from "@/data/payments";
+import { formatBookingSlotLabel, LessonBookingRequest, readLessonBookings, updateLessonBooking } from "@/lib/lesson-bookings";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 5;
@@ -29,6 +32,12 @@ const cardThemeStyles: Record<PaymentCard["theme"], string> = {
   light: "bg-[linear-gradient(145deg,#f8f9ff,#eef2ff)] text-slate-900"
 };
 
+type InlineNotice = {
+  kind: "success" | "info";
+  title: string;
+  description: string;
+};
+
 function formatAmount(amount: number) {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
@@ -43,6 +52,25 @@ function formatDate(dateValue: string) {
 
 function maskCardNumber(last4: string) {
   return `1234 1234 1234 ${last4}`;
+}
+
+function getBookingStatusText(status: LessonBookingRequest["status"]) {
+  if (status === "awaiting_payment") {
+    return "Ожидает оплаты";
+  }
+  if (status === "paid") {
+    return "Оплачено";
+  }
+  if (status === "pending") {
+    return "Ожидает подтверждения преподавателем";
+  }
+  if (status === "reschedule_proposed") {
+    return "Нужно принять перенос в разделе занятий";
+  }
+  if (status === "declined") {
+    return "Заявка отклонена";
+  }
+  return "Заявка отменена";
 }
 
 function PaymentCardTile({
@@ -88,7 +116,12 @@ function PaymentCardTile({
 }
 
 export default function PaymentsPage() {
+  const searchParams = useSearchParams();
+  const requestedBookingId = searchParams.get("booking");
+
   const [cards, setCards] = useState(paymentCards);
+  const [transactions, setTransactions] = useState(paymentTransactions);
+  const [lessonBookings, setLessonBookings] = useState<LessonBookingRequest[]>([]);
   const [selectedCardId, setSelectedCardId] = useState(paymentCards.find((card) => card.isPrimary)?.id ?? paymentCards[0]?.id ?? "");
   const [searchValue, setSearchValue] = useState("");
   const [statusFilter, setStatusFilter] = useState<(typeof paymentStatusFilters)[number]["id"]>("all");
@@ -96,6 +129,7 @@ export default function PaymentsPage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isAddCardOpen, setIsAddCardOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const [paymentNotice, setPaymentNotice] = useState<InlineNotice | null>(null);
   const [newCard, setNewCard] = useState({
     bankName: "",
     holderName: "",
@@ -106,15 +140,38 @@ export default function PaymentsPage() {
   });
 
   useEffect(() => {
+    setLessonBookings(readLessonBookings());
+
+    const syncBookings = () => setLessonBookings(readLessonBookings());
+    window.addEventListener("storage", syncBookings);
+    return () => window.removeEventListener("storage", syncBookings);
+  }, []);
+
+  useEffect(() => {
     setPage(1);
-  }, [searchValue, statusFilter, selectedCardFilter]);
+  }, [searchValue, statusFilter, selectedCardFilter, transactions.length]);
 
   const cardsById = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
+
+  const awaitingPaymentCount = useMemo(
+    () => lessonBookings.filter((booking) => booking.status === "awaiting_payment").length,
+    [lessonBookings]
+  );
+
+  const selectedLessonBooking = useMemo(() => {
+    if (requestedBookingId) {
+      return lessonBookings.find((booking) => booking.id === requestedBookingId);
+    }
+
+    return lessonBookings.find((booking) => booking.status === "awaiting_payment");
+  }, [lessonBookings, requestedBookingId]);
+
+  const selectedCard = cards.find((card) => card.id === selectedCardId) ?? cards[0];
 
   const filteredTransactions = useMemo(() => {
     const query = searchValue.trim().toLowerCase();
 
-    return paymentTransactions.filter((transaction) => {
+    return transactions.filter((transaction) => {
       if (statusFilter !== "all" && transaction.status !== statusFilter) {
         return false;
       }
@@ -134,7 +191,7 @@ export default function PaymentsPage() {
 
       return searchable.includes(query);
     });
-  }, [cardsById, searchValue, selectedCardFilter, statusFilter]);
+  }, [cardsById, searchValue, selectedCardFilter, statusFilter, transactions]);
 
   const pageCount = Math.max(1, Math.ceil(filteredTransactions.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -169,25 +226,64 @@ export default function PaymentsPage() {
     setIsAddCardOpen(false);
   };
 
+  const handlePayLesson = () => {
+    if (!selectedLessonBooking || selectedLessonBooking.status !== "awaiting_payment") {
+      return;
+    }
+
+    const amountRubles = selectedLessonBooking.amountRubles ?? 1990;
+    const paidAt = new Date().toISOString();
+
+    const nextBookings = updateLessonBooking(selectedLessonBooking.id, {
+      status: "paid",
+      paidAt,
+      amountRubles,
+      teacherMessage: "Оплата получена. Занятие добавлено в расписание."
+    });
+
+    setLessonBookings(nextBookings);
+
+    if (selectedCard) {
+      const nextTransaction: PaymentTransaction = {
+        id: `trx-lesson-${Date.now()}`,
+        invoice: `#${Math.floor(1000 + Math.random() * 8999)}`,
+        date: paidAt,
+        status: "Оплачен",
+        productTitle: `Индивидуальный урок: ${selectedLessonBooking.subject}`,
+        productSubtitle: `Слот ${formatBookingSlotLabel(selectedLessonBooking.slot)}`,
+        teacherName: selectedLessonBooking.teacherName,
+        cardId: selectedCard.id,
+        amount: amountRubles,
+        currency: "₽",
+        type: "lesson"
+      };
+
+      setTransactions((prev) => [nextTransaction, ...prev]);
+    }
+
+    setPaymentNotice({
+      kind: "success",
+      title: "Оплата прошла успешно",
+      description: "Урок отмечен как оплаченный и теперь отображается в вашем расписании."
+    });
+  };
+
   return (
     <div className="space-y-5">
       <section className="rounded-[28px] border border-border bg-white p-5 shadow-card sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-semibold text-foreground">Настройки</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Управляйте картами, смотрите историю платежей и чеки по занятиям.</p>
+            <h1 className="text-3xl font-semibold text-foreground">Платежи</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Когда оплачивать: после подтверждения слота преподавателем. Здесь вы завершаете оплату и фиксируете урок в расписании.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="rounded-2xl border border-border px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-slate-50"
-            >
-              Отменить
-            </button>
-            <button type="button" className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-soft">
-              Сохранить
-            </button>
-          </div>
+          <Link
+            href="/app/settings?tab=details"
+            className="inline-flex rounded-2xl border border-border px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-slate-50"
+          >
+            Перейти в настройки
+          </Link>
         </div>
 
         <nav className="mt-6 flex gap-1 overflow-x-auto border-b border-border pb-0.5" aria-label="Разделы настроек оплаты">
@@ -211,289 +307,367 @@ export default function PaymentsPage() {
         </nav>
 
         <div className="mt-6 space-y-6">
-            <section className="rounded-3xl border border-border bg-white p-4 shadow-soft sm:p-5">
-              <h2 className="text-xl font-semibold text-foreground">Платежные данные</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Выберите основную карту и добавляйте новые способы оплаты для занятий.</p>
-
-              <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                {cards.map((card) => (
-                  <PaymentCardTile key={card.id} card={card} isSelected={card.id === selectedCardId} onSelect={setSelectedCardId} />
-                ))}
-
-                <button
-                  type="button"
-                  onClick={() => setIsAddCardOpen((prev) => !prev)}
-                  className="flex min-h-[196px] w-full flex-col items-center justify-center rounded-[24px] border border-dashed border-primary/45 bg-primary/5 p-4 text-center transition hover:bg-primary/10"
-                >
-                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-soft">
-                    <Plus className="h-5 w-5 text-primary" />
-                  </span>
-                  <span className="mt-3 text-sm font-semibold text-foreground">Добавить новую карту</span>
-                  <span className="mt-1 text-xs text-muted-foreground">UI-демо без настоящей оплаты</span>
-                </button>
+          <section className="rounded-3xl border border-primary/20 bg-primary/5 p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Оплата занятия</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  После подтверждения преподавателем заявка получает статус «Ожидает оплаты». Только после оплаты занятие попадает в календарь.
+                </p>
               </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-white px-3 py-1.5 text-xs font-semibold text-primary">
+                <WalletCards className="h-4 w-4" />
+                Ожидают оплаты: {awaitingPaymentCount}
+              </div>
+            </div>
 
-              {isAddCardOpen ? (
-                <form onSubmit={handleAddCard} className="mt-4 rounded-2xl border border-border bg-slate-50 p-4">
-                  <p className="text-sm font-semibold text-foreground">Новая карта</p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    <label className="text-sm">
-                      <span className="mb-1 block text-xs font-medium text-muted-foreground">Банк</span>
-                      <input
-                        value={newCard.bankName}
-                        onChange={(event) => setNewCard((prev) => ({ ...prev, bankName: event.target.value }))}
-                        className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
-                        placeholder="Название банка"
-                        required
-                      />
-                    </label>
-                    <label className="text-sm">
-                      <span className="mb-1 block text-xs font-medium text-muted-foreground">Владелец</span>
-                      <input
-                        value={newCard.holderName}
-                        onChange={(event) => setNewCard((prev) => ({ ...prev, holderName: event.target.value }))}
-                        className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
-                        placeholder="Имя и фамилия"
-                        required
-                      />
-                    </label>
-                    <label className="text-sm">
-                      <span className="mb-1 block text-xs font-medium text-muted-foreground">Последние 4 цифры</span>
-                      <input
-                        value={newCard.last4}
-                        onChange={(event) => setNewCard((prev) => ({ ...prev, last4: event.target.value }))}
-                        className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
-                        placeholder="1234"
-                        maxLength={4}
-                        required
-                      />
-                    </label>
-                    <label className="text-sm">
-                      <span className="mb-1 block text-xs font-medium text-muted-foreground">Срок действия</span>
-                      <input
-                        value={newCard.exp}
-                        onChange={(event) => setNewCard((prev) => ({ ...prev, exp: event.target.value }))}
-                        className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
-                        placeholder="MM/YY"
-                        required
-                      />
-                    </label>
-                    <label className="text-sm">
-                      <span className="mb-1 block text-xs font-medium text-muted-foreground">Платежная система</span>
-                      <select
-                        value={newCard.brand}
-                        onChange={(event) => setNewCard((prev) => ({ ...prev, brand: event.target.value as PaymentCard["brand"] }))}
-                        className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
-                      >
-                        <option value="Visa">Visa</option>
-                        <option value="Mastercard">Mastercard</option>
-                        <option value="Мир">Мир</option>
-                      </select>
-                    </label>
-                    <label className="text-sm">
-                      <span className="mb-1 block text-xs font-medium text-muted-foreground">Тема карты</span>
-                      <select
-                        value={newCard.theme}
-                        onChange={(event) => setNewCard((prev) => ({ ...prev, theme: event.target.value as PaymentCard["theme"] }))}
-                        className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
-                      >
-                        <option value="dark">Темная</option>
-                        <option value="purple">Фиолетовая</option>
-                        <option value="light">Светлая</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div className="mt-4 flex items-center justify-end gap-2">
+            {selectedLessonBooking ? (
+              <div className="mt-4 grid gap-4 rounded-2xl border border-primary/20 bg-white p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">{selectedLessonBooking.subject}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Преподаватель: {selectedLessonBooking.teacherName}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Слот: {formatBookingSlotLabel(selectedLessonBooking.slot)}</p>
+                  <p className="mt-2 text-xs font-semibold text-primary">Статус: {getBookingStatusText(selectedLessonBooking.status)}</p>
+                  {selectedLessonBooking.teacherMessage ? (
+                    <p className="mt-1 text-xs text-muted-foreground">Комментарий: {selectedLessonBooking.teacherMessage}</p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2 lg:text-right">
+                  <p className="text-sm text-muted-foreground">К оплате</p>
+                  <p className="text-2xl font-semibold text-foreground">{formatAmount(selectedLessonBooking.amountRubles ?? 1990)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Карта: {selectedCard ? `${selectedCard.brand} •••• ${selectedCard.last4}` : "не выбрана"}
+                  </p>
+
+                  {selectedLessonBooking.status === "awaiting_payment" ? (
                     <button
                       type="button"
-                      onClick={() => setIsAddCardOpen(false)}
-                      className="rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground"
+                      onClick={handlePayLesson}
+                      className="inline-flex rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
                     >
-                      Закрыть
+                      Оплатить занятие
                     </button>
-                    <button type="submit" className="rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">
-                      Добавить карту
-                    </button>
-                  </div>
-                </form>
-              ) : null}
-            </section>
-
-            <section className="rounded-3xl border border-border bg-white p-4 shadow-soft sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-semibold text-foreground">Детали транзакций</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Смотрите историю оплат и статусы возвратов по каждому заказу.</p>
+                  ) : selectedLessonBooking.status === "paid" ? (
+                    <Link
+                      href={`/app/lessons?booking=${encodeURIComponent(selectedLessonBooking.id)}`}
+                      className="inline-flex rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+                    >
+                      Открыть в расписании
+                    </Link>
+                  ) : (
+                    <Link
+                      href="/app/lessons"
+                      className="inline-flex rounded-full border border-border bg-white px-4 py-2 text-sm font-semibold text-foreground"
+                    >
+                      Перейти в раздел «Занятия»
+                    </Link>
+                  )}
                 </div>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-dashed border-border bg-white px-4 py-3 text-sm text-muted-foreground">
+                Сейчас нет заявок со статусом «Ожидает оплаты». Сначала отправьте заявку в разделе «Занятия» и дождитесь подтверждения преподавателя.
+              </div>
+            )}
+
+            {paymentNotice ? (
+              <div
+                className={cn(
+                  "mt-3 rounded-2xl border px-3 py-2 text-sm",
+                  paymentNotice.kind === "success"
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                    : "border-primary/20 bg-primary/5 text-primary"
+                )}
+              >
+                <p className="font-semibold">{paymentNotice.title}</p>
+                <p className="mt-1">{paymentNotice.description}</p>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="rounded-3xl border border-border bg-white p-4 shadow-soft sm:p-5">
+            <h2 className="text-xl font-semibold text-foreground">Платежные данные</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Выберите основную карту и добавляйте новые способы оплаты для занятий.</p>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+              {cards.map((card) => (
+                <PaymentCardTile key={card.id} card={card} isSelected={card.id === selectedCardId} onSelect={setSelectedCardId} />
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setIsAddCardOpen((prev) => !prev)}
+                className="flex min-h-[196px] w-full flex-col items-center justify-center rounded-[24px] border border-dashed border-primary/45 bg-primary/5 p-4 text-center transition hover:bg-primary/10"
+              >
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-soft">
+                  <Plus className="h-5 w-5 text-primary" />
+                </span>
+                <span className="mt-3 text-sm font-semibold text-foreground">Добавить новую карту</span>
+                <span className="mt-1 text-xs text-muted-foreground">UI-демо без настоящей оплаты</span>
+              </button>
+            </div>
+
+            {isAddCardOpen ? (
+              <form onSubmit={handleAddCard} className="mt-4 rounded-2xl border border-border bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-foreground">Новая карта</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">Банк</span>
+                    <input
+                      value={newCard.bankName}
+                      onChange={(event) => setNewCard((prev) => ({ ...prev, bankName: event.target.value }))}
+                      className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
+                      placeholder="Название банка"
+                      required
+                    />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">Владелец</span>
+                    <input
+                      value={newCard.holderName}
+                      onChange={(event) => setNewCard((prev) => ({ ...prev, holderName: event.target.value }))}
+                      className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
+                      placeholder="Имя и фамилия"
+                      required
+                    />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">Последние 4 цифры</span>
+                    <input
+                      value={newCard.last4}
+                      onChange={(event) => setNewCard((prev) => ({ ...prev, last4: event.target.value }))}
+                      className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
+                      placeholder="1234"
+                      maxLength={4}
+                      required
+                    />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">Срок действия</span>
+                    <input
+                      value={newCard.exp}
+                      onChange={(event) => setNewCard((prev) => ({ ...prev, exp: event.target.value }))}
+                      className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
+                      placeholder="MM/YY"
+                      required
+                    />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">Платежная система</span>
+                    <select
+                      value={newCard.brand}
+                      onChange={(event) => setNewCard((prev) => ({ ...prev, brand: event.target.value as PaymentCard["brand"] }))}
+                      className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
+                    >
+                      <option value="Visa">Visa</option>
+                      <option value="Mastercard">Mastercard</option>
+                      <option value="Мир">Мир</option>
+                    </select>
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">Тема карты</span>
+                    <select
+                      value={newCard.theme}
+                      onChange={(event) => setNewCard((prev) => ({ ...prev, theme: event.target.value as PaymentCard["theme"] }))}
+                      className="w-full rounded-xl border border-border bg-white px-3 py-2 outline-none focus:border-primary"
+                    >
+                      <option value="dark">Темная</option>
+                      <option value="purple">Фиолетовая</option>
+                      <option value="light">Светлая</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="mt-4 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddCardOpen(false)}
+                    className="rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground"
+                  >
+                    Закрыть
+                  </button>
+                  <button type="submit" className="rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">
+                    Добавить карту
+                  </button>
+                </div>
+              </form>
+            ) : null}
+          </section>
+
+          <section className="rounded-3xl border border-border bg-white p-4 shadow-soft sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Детали транзакций</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Смотрите историю оплат и статусы возвратов по каждому заказу.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFilterOpen((prev) => !prev)}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition",
+                  isFilterOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground hover:bg-slate-50"
+                )}
+              >
+                <Filter className="h-4 w-4" />
+                Фильтры
+              </button>
+            </div>
+
+            {isFilterOpen ? (
+              <div className="mt-4 grid gap-3 rounded-2xl border border-border bg-slate-50 p-3 md:grid-cols-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold text-muted-foreground">Поиск</span>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      value={searchValue}
+                      onChange={(event) => setSearchValue(event.target.value)}
+                      placeholder="Счет, курс или преподаватель"
+                      className="w-full rounded-xl border border-border bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
+                    />
+                  </div>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold text-muted-foreground">Статус</span>
+                  <select
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value as (typeof paymentStatusFilters)[number]["id"])}
+                    className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    {paymentStatusFilters.map((status) => (
+                      <option key={status.id} value={status.id}>
+                        {status.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold text-muted-foreground">Карта</span>
+                  <select
+                    value={selectedCardFilter}
+                    onChange={(event) => setSelectedCardFilter(event.target.value)}
+                    className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="all">Все карты</option>
+                    {cards.map((card) => (
+                      <option key={card.id} value={card.id}>
+                        {card.brand} •••• {card.last4}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : null}
+
+            <div className="mt-4 overflow-x-auto rounded-2xl border border-border">
+              <table className="min-w-[760px] divide-y divide-border text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3">Счет</th>
+                    <th className="px-4 py-3">Дата</th>
+                    <th className="px-4 py-3">Статус</th>
+                    <th className="px-4 py-3">Продукт</th>
+                    <th className="px-4 py-3">Карта</th>
+                    <th className="px-4 py-3 text-right">Сумма</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border bg-white">
+                  {paginatedTransactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                        По заданным фильтрам транзакции не найдены.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedTransactions.map((transaction) => {
+                      const linkedCard = cardsById.get(transaction.cardId);
+                      return (
+                        <tr key={transaction.id}>
+                          <td className="px-4 py-3 font-semibold text-foreground">{transaction.invoice}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{formatDate(transaction.date)}</td>
+                          <td className="px-4 py-3">
+                            <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", statusBadgeStyles[transaction.status])}>
+                              {transaction.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-start gap-2">
+                              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                                <Landmark className="h-4 w-4" />
+                              </span>
+                              <div>
+                                <p className="font-semibold text-foreground">{transaction.productTitle}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {transaction.productSubtitle} · {transaction.teacherName}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                            {linkedCard ? `${linkedCard.brand} •••• ${linkedCard.last4}` : "Карта не найдена"}
+                          </td>
+                          <td className={cn("px-4 py-3 text-right font-semibold", transaction.amount < 0 ? "text-emerald-700" : "text-foreground")}>
+                            {formatAmount(transaction.amount)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Показано {filteredTransactions.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
+                {Math.min(safePage * PAGE_SIZE, filteredTransactions.length)} из {filteredTransactions.length}
+              </p>
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setIsFilterOpen((prev) => !prev)}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition",
-                    isFilterOpen ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground hover:bg-slate-50"
-                  )}
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                  className="rounded-xl border border-border px-3 py-1.5 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+                  disabled={safePage <= 1}
                 >
-                  <Filter className="h-4 w-4" />
-                  Фильтры
+                  Назад
+                </button>
+                {Array.from({ length: pageCount }).map((_, index) => {
+                  const pageNumber = index + 1;
+                  return (
+                    <button
+                      key={pageNumber}
+                      type="button"
+                      onClick={() => setPage(pageNumber)}
+                      className={cn(
+                        "h-9 w-9 rounded-xl text-sm font-semibold transition",
+                        pageNumber === safePage ? "bg-primary text-primary-foreground" : "border border-border text-foreground hover:bg-slate-50"
+                      )}
+                    >
+                      {pageNumber}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
+                  className="rounded-xl border border-border px-3 py-1.5 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+                  disabled={safePage >= pageCount}
+                >
+                  Вперед
                 </button>
               </div>
+            </div>
+          </section>
 
-              {isFilterOpen ? (
-                <div className="mt-4 grid gap-3 rounded-2xl border border-border bg-slate-50 p-3 md:grid-cols-3">
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold text-muted-foreground">Поиск</span>
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        value={searchValue}
-                        onChange={(event) => setSearchValue(event.target.value)}
-                        placeholder="Счет, курс или преподаватель"
-                        className="w-full rounded-xl border border-border bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
-                      />
-                    </div>
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold text-muted-foreground">Статус</span>
-                    <select
-                      value={statusFilter}
-                      onChange={(event) => setStatusFilter(event.target.value as (typeof paymentStatusFilters)[number]["id"])}
-                      className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
-                    >
-                      {paymentStatusFilters.map((status) => (
-                        <option key={status.id} value={status.id}>
-                          {status.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold text-muted-foreground">Карта</span>
-                    <select
-                      value={selectedCardFilter}
-                      onChange={(event) => setSelectedCardFilter(event.target.value)}
-                      className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
-                    >
-                      <option value="all">Все карты</option>
-                      {cards.map((card) => (
-                        <option key={card.id} value={card.id}>
-                          {card.brand} •••• {card.last4}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              ) : null}
-
-              <div className="mt-4 overflow-x-auto rounded-2xl border border-border">
-                <table className="min-w-[760px] divide-y divide-border text-sm">
-                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3">Счет</th>
-                      <th className="px-4 py-3">Дата</th>
-                      <th className="px-4 py-3">Статус</th>
-                      <th className="px-4 py-3">Продукт</th>
-                      <th className="px-4 py-3">Карта</th>
-                      <th className="px-4 py-3 text-right">Сумма</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border bg-white">
-                    {paginatedTransactions.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                          По заданным фильтрам транзакции не найдены.
-                        </td>
-                      </tr>
-                    ) : (
-                      paginatedTransactions.map((transaction) => {
-                        const linkedCard = cardsById.get(transaction.cardId);
-                        return (
-                          <tr key={transaction.id}>
-                            <td className="px-4 py-3 font-semibold text-foreground">{transaction.invoice}</td>
-                            <td className="px-4 py-3 text-muted-foreground">{formatDate(transaction.date)}</td>
-                            <td className="px-4 py-3">
-                              <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", statusBadgeStyles[transaction.status])}>
-                                {transaction.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-start gap-2">
-                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-                                  <Landmark className="h-4 w-4" />
-                                </span>
-                                <div>
-                                  <p className="font-semibold text-foreground">{transaction.productTitle}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {transaction.productSubtitle} · {transaction.teacherName}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-xs text-muted-foreground">
-                              {linkedCard ? `${linkedCard.brand} •••• ${linkedCard.last4}` : "Карта не найдена"}
-                            </td>
-                            <td className={cn("px-4 py-3 text-right font-semibold", transaction.amount < 0 ? "text-emerald-700" : "text-foreground")}>
-                              {formatAmount(transaction.amount)}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-muted-foreground">
-                  Показано {filteredTransactions.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
-                  {Math.min(safePage * PAGE_SIZE, filteredTransactions.length)} из {filteredTransactions.length}
-                </p>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                    className="rounded-xl border border-border px-3 py-1.5 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-45"
-                    disabled={safePage <= 1}
-                  >
-                    Назад
-                  </button>
-                  {Array.from({ length: pageCount }).map((_, index) => {
-                    const pageNumber = index + 1;
-                    return (
-                      <button
-                        key={pageNumber}
-                        type="button"
-                        onClick={() => setPage(pageNumber)}
-                        className={cn(
-                          "h-9 w-9 rounded-xl text-sm font-semibold transition",
-                          pageNumber === safePage ? "bg-primary text-primary-foreground" : "border border-border text-foreground hover:bg-slate-50"
-                        )}
-                      >
-                        {pageNumber}
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
-                    className="rounded-xl border border-border px-3 py-1.5 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-45"
-                    disabled={safePage >= pageCount}
-                  >
-                    Вперед
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
-              <p className="text-sm font-medium text-foreground">
-                Выбранная основная карта:{" "}
-                <span className="font-semibold">
-                  {cards.find((card) => card.id === selectedCardId)?.brand} ••••{" "}
-                  {cards.find((card) => card.id === selectedCardId)?.last4}
-                </span>
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">При следующих покупках она будет подставляться автоматически (демо-логика).</p>
-            </section>
+          <section className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+            <p className="text-sm font-medium text-foreground">
+              Выбранная основная карта:{" "}
+              <span className="font-semibold">
+                {selectedCard?.brand} •••• {selectedCard?.last4}
+              </span>
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">При следующих покупках она будет подставляться автоматически (демо-логика).</p>
+          </section>
         </div>
       </section>
     </div>
