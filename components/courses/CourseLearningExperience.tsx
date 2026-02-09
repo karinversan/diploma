@@ -47,17 +47,9 @@ type CourseLearningExperienceProps = {
   syllabus: CourseSyllabus;
   homeworkPlan: HomeworkItem[];
   nextLesson?: StudentLesson;
-  slots: CourseSlot[];
 };
 
 type CourseTab = "program" | "plan" | "assignments" | "faq";
-
-type CourseSlot = {
-  id: string;
-  date: string;
-  time: string;
-  durationMinutes: number;
-};
 
 function formatLessonDate(value: string) {
   const label = new Intl.DateTimeFormat("ru-RU", {
@@ -67,16 +59,6 @@ function formatLessonDate(value: string) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
-
-  return label.replace(/^[A-Za-zА-Яа-яЁё]/, (first) => first.toLowerCase());
-}
-
-function formatSlot(value: CourseSlot) {
-  const label = new Intl.DateTimeFormat("ru-RU", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short"
-  }).format(new Date(`${value.date}T12:00:00`));
 
   return label.replace(/^[A-Za-zА-Яа-яЁё]/, (first) => first.toLowerCase());
 }
@@ -126,24 +108,35 @@ function getHomeworkStatusClass(item: HomeworkItem) {
   return "border-slate-300 bg-slate-50 text-slate-700";
 }
 
-function encodeCourseSlotHref(course: StudentCourse, slot?: CourseSlot) {
-  if (!slot) {
-    return `/app/lessons?course=${encodeURIComponent(course.id)}&teacher=${encodeURIComponent(course.teacherId)}&subject=${encodeURIComponent(
-      course.title
-    )}`;
+function getCourseUnitHref(courseId: string, unitId: string) {
+  return `/app/courses/${encodeURIComponent(courseId)}/units/${encodeURIComponent(unitId)}`;
+}
+
+function getUnitOpenLabel(kind: CourseLessonUnit["kind"]) {
+  if (kind === "Видео") {
+    return "Смотреть урок";
+  }
+  if (kind === "Чтение") {
+    return "Открыть материал";
+  }
+  if (kind === "Практика") {
+    return "Открыть практику";
+  }
+  if (kind === "Тест") {
+    return "Открыть квиз";
+  }
+  if (kind === "Созвон") {
+    return "Открыть модуль созвона";
   }
 
-  return `/app/lessons?course=${encodeURIComponent(course.id)}&teacher=${encodeURIComponent(course.teacherId)}&subject=${encodeURIComponent(
-    course.title
-  )}&slot=${encodeURIComponent(`${slot.date} ${slot.time}`)}`;
+  return "Открыть модуль";
 }
 
 export function CourseLearningExperience({
   course,
   syllabus,
   homeworkPlan,
-  nextLesson,
-  slots
+  nextLesson
 }: CourseLearningExperienceProps) {
   const [activeTab, setActiveTab] = useState<CourseTab>("program");
   const [expandedModules, setExpandedModules] = useState<string[]>(() =>
@@ -180,18 +173,14 @@ export function CourseLearningExperience({
 
   const isCertificateReady = progressPercent >= 90 && gradedHomework.length >= Math.max(1, Math.round(homeworkPlan.length * 0.5));
 
-  const defaultSlot = slots[0];
-
-  const continueHref =
-    nextUnit?.kind === "Созвон"
-      ? encodeCourseSlotHref(course, defaultSlot)
-      : `/app/lessons?course=${encodeURIComponent(course.id)}`;
-
-  const continueLabel = nextUnit
-    ? nextUnit.kind === "Созвон"
-      ? "Записаться на ближайший созвон"
-      : "Продолжить с следующего урока"
-    : "Открыть материалы курса";
+  const firstUnit = flattenedUnits[0];
+  const continueUnit = nextUnit ?? firstUnit;
+  const continueHref = continueUnit
+    ? getCourseUnitHref(course.id, continueUnit.id)
+    : `/app/courses/${encodeURIComponent(course.id)}`;
+  const continueLabel = continueUnit
+    ? `${nextUnit ? "Продолжить:" : "Открыть:"} ${getUnitOpenLabel(continueUnit.kind)}`
+    : "Вернуться к курсам";
 
   const toggleModule = (moduleId: string) => {
     setExpandedModules((prev) =>
@@ -403,21 +392,21 @@ export function CourseLearningExperience({
                     Перейти в урок
                   </Link>
                 </>
-              ) : defaultSlot ? (
+              ) : nextUnit ? (
                 <>
-                  <p className="mt-2 text-sm text-foreground">
-                    {formatSlot(defaultSlot)} • {defaultSlot.time}
+                  <p className="mt-2 text-sm text-foreground">{nextUnit.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Следующий шаг: {nextUnit.kind.toLowerCase()} • модуль {nextUnit.moduleWeek}
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">Свободный слот для живого занятия</p>
                   <Link
-                    href={encodeCourseSlotHref(course, defaultSlot)}
+                    href={getCourseUnitHref(course.id, nextUnit.id)}
                     className="mt-3 inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
                   >
-                    Забронировать
+                    {getUnitOpenLabel(nextUnit.kind)}
                   </Link>
                 </>
               ) : (
-                <p className="mt-2 text-xs text-muted-foreground">Слоты появятся после синхронизации расписания преподавателя.</p>
+                <p className="mt-2 text-xs text-muted-foreground">Вы завершили все модули. Можно повторить материалы и закрепить навыки.</p>
               )}
             </div>
           </section>
@@ -476,7 +465,7 @@ export function CourseLearningExperience({
               </div>
             </div>
 
-            {syllabus.modules.map((module, moduleIndex) => {
+            {syllabus.modules.map((module) => {
               const metric = moduleMetricById.get(module.id);
               const isOpen = expandedModules.includes(module.id);
               const moduleStatusText = metric?.isCompleted
@@ -522,11 +511,10 @@ export function CourseLearningExperience({
                     <div className="mt-4 space-y-3">
                       <p className="text-sm text-muted-foreground">Цель модуля: {module.goal}</p>
 
-                      {module.lessons.map((lesson, lessonIndex) => {
+                      {module.lessons.map((lesson) => {
                         const Icon = getKindIcon(lesson.kind);
                         const isCompleted = completedSet.has(lesson.id);
                         const unlocked = isUnitUnlocked(lesson.id);
-                        const suggestedSlot = slots.length > 0 ? slots[(moduleIndex + lessonIndex) % slots.length] : undefined;
 
                         return (
                           <article
@@ -564,7 +552,7 @@ export function CourseLearningExperience({
                                 ) : null}
                                 {lesson.isPreview ? (
                                   <span className="mt-2 ml-1 inline-flex rounded-full border border-accent/70 bg-accent/35 px-2 py-0.5 text-[11px] font-semibold text-slate-900">
-                                    Preview
+                                    Открытый доступ
                                   </span>
                                 ) : null}
                               </div>
@@ -580,30 +568,25 @@ export function CourseLearningExperience({
                                     <Lock className="h-3.5 w-3.5" />
                                     Заблокировано
                                   </span>
-                                ) : lesson.kind === "Созвон" ? (
-                                  <Link
-                                    href={encodeCourseSlotHref(course, suggestedSlot)}
-                                    className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
-                                  >
-                                    Записаться
-                                  </Link>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => markUnitCompleted(lesson.id)}
-                                    className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
-                                  >
-                                    Отметить выполненным
-                                  </button>
-                                )}
+                                ) : null}
 
                                 {unlocked ? (
                                   <Link
-                                    href={`/app/lessons?course=${encodeURIComponent(course.id)}`}
+                                    href={getCourseUnitHref(course.id, lesson.id)}
+                                    className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+                                  >
+                                    {getUnitOpenLabel(lesson.kind)}
+                                  </Link>
+                                ) : null}
+
+                                {unlocked && !isCompleted ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => markUnitCompleted(lesson.id)}
                                     className="inline-flex items-center justify-center rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
                                   >
-                                    Открыть
-                                  </Link>
+                                    Отметить выполненным
+                                  </button>
                                 ) : null}
                               </div>
                             </div>

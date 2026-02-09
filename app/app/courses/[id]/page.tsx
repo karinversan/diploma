@@ -4,19 +4,11 @@ import { CourseLearningExperience } from "@/components/courses/CourseLearningExp
 import { getCourseById, getCourseSyllabus } from "@/data/courses";
 import { homeworkItems } from "@/data/homework";
 import { upcomingLessons } from "@/data/lessons";
-import { getTeacherById } from "@/data/teachers";
 
 type CourseDetailsPageProps = {
   params: {
     id: string;
   };
-};
-
-type CourseSlot = {
-  id: string;
-  date: string;
-  time: string;
-  durationMinutes: number;
 };
 
 function safeDecode(value: string) {
@@ -25,25 +17,6 @@ function safeDecode(value: string) {
   } catch {
     return value;
   }
-}
-
-function getCourseSlots(courseId: string, teacherId: string): CourseSlot[] {
-  const teacher = getTeacherById(teacherId);
-
-  if (!teacher) {
-    return [];
-  }
-
-  return teacher.scheduleSlots
-    .flatMap((slot) =>
-      slot.times.map((time) => ({
-        id: `${courseId}__${slot.date}__${time.replace(":", "-")}`,
-        date: slot.date,
-        time,
-        durationMinutes: 60
-      }))
-    )
-    .slice(0, 8);
 }
 
 export default function CourseDetailsPage({ params }: CourseDetailsPageProps) {
@@ -90,15 +63,12 @@ export default function CourseDetailsPage({ params }: CourseDetailsPageProps) {
     .filter((lesson) => lesson.courseId === course.id)
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())[0];
 
-  const slots = getCourseSlots(course.id, course.teacherId);
-
   return (
     <CourseLearningExperience
       course={course}
       syllabus={syllabus}
       homeworkPlan={homeworkPlan}
       nextLesson={nextLesson}
-      slots={slots}
     />
   );
 }
