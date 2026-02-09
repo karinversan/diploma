@@ -7,10 +7,14 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock3, MessageSquare, PlayCircle, ShieldCheck, Video, X } from "lucide-react";
 
 import { Teacher } from "@/data/teachers";
+import {
+  buildBookingId,
+  parseSlotToDateTime,
+  readLessonBookings,
+  upsertLessonBooking
+} from "@/lib/lesson-bookings";
 
 import { SelectedScheduleSlot } from "@/components/teacher/SchedulePicker";
-
-const BOOKINGS_STORAGE_KEY = "student-bookings-v1";
 
 type TeacherSidebarProps = {
   teacher: Teacher;
@@ -18,18 +22,6 @@ type TeacherSidebarProps = {
   bookingHrefBase?: string;
   messageHref?: string;
   bookingButtonLabel?: string;
-};
-
-type DemoBooking = {
-  id: string;
-  courseId: string;
-  teacherId: string;
-  teacherName: string;
-  subject: string;
-  slot: string;
-  startAt: string;
-  durationMinutes: number;
-  createdAt: string;
 };
 
 type BookingNotice = {
@@ -52,7 +44,7 @@ function createDefaultDraft(teacher: Teacher, selectedSlot: SelectedScheduleSlot
     return `Здравствуйте! Хочу записаться на занятие по теме «${teacher.subjects[0] ?? "предмет"}».`;
   }
 
-  return `Здравствуйте! Хочу записаться на урок ${formatDate(selectedSlot.date)} в ${selectedSlot.time}. Подтвердите, пожалуйста, запись.`;
+  return `Здравствуйте! Хочу записаться на урок ${formatDate(selectedSlot.date)} в ${selectedSlot.time}. Цель занятия: разобрать ключевые сложности по теме.`;
 }
 
 function resolveBookingLink(teacher: Teacher, selectedSlot: SelectedScheduleSlot | null, bookingHrefBase?: string) {
@@ -90,21 +82,6 @@ function resolveMessageLink(teacher: Teacher, draftMessage: string, messageHref?
   }
 
   return `${pathname}?${params.toString()}`;
-}
-
-function parseSlotToDateTime(slotValue: string) {
-  const match = slotValue.trim().match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
-
-  if (!match) {
-    return null;
-  }
-
-  const [, datePart, timePart] = match;
-  return `${datePart}T${timePart}:00+03:00`;
-}
-
-function buildBookingId(params: { teacherId: string; courseId: string; slot: string }) {
-  return `${params.teacherId}__${params.courseId}__${params.slot.replace(/\s+/g, "_").replace(/:/g, "-")}`;
 }
 
 export function TeacherSidebar({
@@ -168,30 +145,34 @@ export function TeacherSidebar({
       slot: selectedSlotValue
     });
 
-    const booking: DemoBooking = {
-      id: bookingId,
-      courseId: bookingCourseId,
-      teacherId: teacher.id,
-      teacherName: teacher.name,
-      subject: bookingSubject,
-      slot: selectedSlotValue,
-      startAt,
-      durationMinutes: 60,
-      createdAt: new Date().toISOString()
-    };
-
     try {
-      const raw = window.localStorage.getItem(BOOKINGS_STORAGE_KEY);
-      const existing = raw ? (JSON.parse(raw) as DemoBooking[]) : [];
-      const alreadyExists = existing.some((item) => item.id === booking.id);
-      const next = alreadyExists ? existing : [...existing, booking];
-      window.localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(next));
+      const now = new Date().toISOString();
+      const existing = readLessonBookings().find((item) => item.id === bookingId);
+
+      upsertLessonBooking({
+        id: bookingId,
+        courseId: bookingCourseId,
+        teacherId: teacher.id,
+        teacherName: teacher.name,
+        subject: bookingSubject,
+        slot: selectedSlotValue,
+        startAt,
+        durationMinutes: 60,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        status: "pending",
+        amountRubles: teacher.pricePerHour,
+        studentMessage: bookingDraft.trim() || createDefaultDraft(teacher, selectedSlot),
+        teacherMessage: undefined,
+        proposedSlot: undefined,
+        source: "teacher_profile"
+      });
 
       setBookingNotice({
         kind: "success",
-        title: alreadyExists ? "Запись уже существует" : "Запись создана",
-        description: alreadyExists
-          ? "Этот слот уже добавлен в ваши занятия. Проверьте раздел «Расписание» в личном кабинете."
+        title: existing ? "Заявка уже отправлена" : "Заявка отправлена преподавателю",
+        description: existing
+          ? "Этот слот уже находится в обработке. Проверяйте статус в разделе «Занятия»."
           : `Ожидайте подтверждения в личном кабинете. Слот: ${
               selectedSlot ? `${formatDate(selectedSlot.date)} в ${selectedSlot.time}` : selectedSlotValue
             }.`
@@ -299,9 +280,9 @@ export function TeacherSidebar({
                   <Dialog.Content className="fixed left-1/2 top-1/2 z-[73] w-[calc(100%-2rem)] max-h-[88vh] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-3xl border border-border bg-white p-5 shadow-soft sm:p-6">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <Dialog.Title className="text-lg font-semibold text-foreground">Подтверждение записи</Dialog.Title>
+                        <Dialog.Title className="text-lg font-semibold text-foreground">Отправка заявки на урок</Dialog.Title>
                         <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-                          Проверьте данные слота и при необходимости добавьте сообщение преподавателю.
+                          Проверьте данные слота и добавьте сообщение преподавателю. После отправки ожидайте подтверждения.
                         </Dialog.Description>
                       </div>
 
@@ -363,7 +344,7 @@ export function TeacherSidebar({
                         className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
                       >
                         <CheckCircle2 className="mr-1.5 h-4 w-4" />
-                        Подтвердить запись
+                        Отправить заявку
                       </button>
                       <Link
                         href={modalMessageLink}

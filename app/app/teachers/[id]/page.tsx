@@ -76,7 +76,9 @@ export default function AppTeacherProfilePage({ params }: AppTeacherProfilePageP
 
       <TeacherProfileLayout
         teacher={teacher}
-        bookingHrefBase={`/app/lessons?teacher=${encodeURIComponent(teacher.id)}`}
+        bookingHrefBase={`/app/lessons?teacher=${encodeURIComponent(teacher.id)}&course=${encodeURIComponent(`profile-${teacher.id}`)}&subject=${encodeURIComponent(
+          `Индивидуальное занятие: ${teacher.subjects[0] ?? "предмет"}`
+        )}`}
         messageHref={`/app/messages?teacher=${encodeURIComponent(teacher.id)}`}
         bookingButtonLabel="Забронировать урок"
       />

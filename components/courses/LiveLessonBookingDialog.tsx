@@ -14,9 +14,14 @@ import {
 
 import { StudentCourse } from "@/data/courses";
 import { teachers, Teacher } from "@/data/teachers";
+import {
+  buildBookingId,
+  buildSlotKey,
+  parseSlotToDateTime,
+  readLessonBookings,
+  upsertLessonBooking
+} from "@/lib/lesson-bookings";
 import { cn } from "@/lib/utils";
-
-const BOOKINGS_STORAGE_KEY = "student-bookings-v1";
 
 const categoryKeywords: Record<string, string[]> = {
   Языки: ["язык", "англий", "немец", "француз", "корей", "разговор"],
@@ -36,18 +41,6 @@ type SlotOption = {
   slotValue: string;
   slotKey: string;
   dateLabel: string;
-};
-
-type DemoBooking = {
-  id: string;
-  courseId: string;
-  teacherId: string;
-  teacherName: string;
-  subject: string;
-  slot: string;
-  startAt: string;
-  durationMinutes: number;
-  createdAt: string;
 };
 
 type BookingFeedback = {
@@ -116,21 +109,6 @@ function groupSlotsByDate(slots: SlotOption[]) {
   }));
 }
 
-function parseSlotToDateTime(slotValue: string) {
-  const match = slotValue.trim().match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
-
-  if (!match) {
-    return null;
-  }
-
-  const [, datePart, timePart] = match;
-  return `${datePart}T${timePart}:00+03:00`;
-}
-
-function buildBookingId(params: { teacherId: string; courseId: string; slot: string }) {
-  return `${params.teacherId}__${params.courseId}__${params.slot.replace(/\s+/g, "_").replace(/:/g, "-")}`;
-}
-
 export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
@@ -164,12 +142,17 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
     setBookingFeedback(null);
 
     try {
-      const raw = window.localStorage.getItem(BOOKINGS_STORAGE_KEY);
-      const parsed = raw ? (JSON.parse(raw) as DemoBooking[]) : [];
+      const parsed = readLessonBookings();
       const keys = new Set(
         parsed
-          .filter((item) => typeof item?.teacherId === "string" && typeof item?.slot === "string")
-          .map((item) => `${item.teacherId}__${item.slot}`)
+          .filter(
+            (item) =>
+              item.status === "pending" ||
+              item.status === "awaiting_payment" ||
+              item.status === "paid" ||
+              item.status === "reschedule_proposed"
+          )
+          .map((item) => buildSlotKey(item.teacherId, item.slot))
       );
       setBookedSlotKeys(keys);
     } catch {
@@ -204,7 +187,7 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
       .flatMap((slot) =>
         slot.times.map((time) => {
           const slotValue = `${slot.date} ${time}`;
-          const slotKey = `${selectedTeacher.teacher.id}__${slotValue}`;
+          const slotKey = buildSlotKey(selectedTeacher.teacher.id, slotValue);
           const dateTime = new Date(`${slot.date}T${time}:00+03:00`).getTime();
 
           return {
@@ -256,24 +239,29 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
       slot: selectedSlot.slotValue
     });
 
-    const booking: DemoBooking = {
-      id: bookingId,
-      courseId: course.id,
-      teacherId: selectedTeacher.teacher.id,
-      teacherName: selectedTeacher.teacher.name,
-      subject: course.title,
-      slot: selectedSlot.slotValue,
-      startAt,
-      durationMinutes: 60,
-      createdAt: new Date().toISOString()
-    };
-
     try {
-      const raw = window.localStorage.getItem(BOOKINGS_STORAGE_KEY);
-      const parsed = raw ? (JSON.parse(raw) as DemoBooking[]) : [];
-      const exists = parsed.some((item) => item.id === booking.id);
-      const next = exists ? parsed : [...parsed, booking];
-      window.localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(next));
+      const now = new Date().toISOString();
+      const parsed = readLessonBookings();
+      const existing = parsed.find((item) => item.id === bookingId);
+
+      upsertLessonBooking({
+        id: bookingId,
+        courseId: course.id,
+        teacherId: selectedTeacher.teacher.id,
+        teacherName: selectedTeacher.teacher.name,
+        subject: course.title,
+        slot: selectedSlot.slotValue,
+        startAt,
+        durationMinutes: 60,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        status: "pending",
+        amountRubles: selectedTeacher.teacher.pricePerHour,
+        studentMessage: `Хочу записаться на созвон по курсу «${course.title}».`,
+        teacherMessage: undefined,
+        proposedSlot: undefined,
+        source: "course_dialog"
+      });
 
       setBookedSlotKeys((prev) => {
         const nextSet = new Set(prev);
@@ -283,10 +271,10 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
       setSelectedSlotKey("");
 
       setBookingFeedback({
-        title: exists ? "Этот слот уже был забронирован" : "Запись создана",
-        description: exists
-          ? "Проверьте раздел «Занятия» в личном кабинете."
-          : `Ожидайте подтверждения в личном кабинете. Преподаватель: ${selectedTeacher.teacher.name}, время: ${selectedSlot.dateLabel} в ${selectedSlot.time}.`,
+        title: existing ? "Заявка уже создана" : "Заявка отправлена преподавателю",
+        description: existing
+          ? "Эта заявка уже в работе. Проверяйте статус в разделе «Занятия»."
+          : `Преподаватель: ${selectedTeacher.teacher.name}, время: ${selectedSlot.dateLabel} в ${selectedSlot.time}. Статус заявки: «Ожидает подтверждения».`,
         isSuccess: true
       });
     } catch {
@@ -344,7 +332,7 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
                   const active = item.teacher.id === selectedTeacherId;
                   const freeSlotsCount = item.teacher.scheduleSlots.reduce((count, slot) => {
                     const available = slot.times.filter((time) => {
-                      const key = `${item.teacher.id}__${slot.date} ${time}`;
+                      const key = buildSlotKey(item.teacher.id, `${slot.date} ${time}`);
                       return !bookedSlotKeys.has(key);
                     });
                     return count + available.length;
@@ -431,7 +419,7 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
               {selectedSlot ? (
                 <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                   <p className="font-semibold">Выбран слот: {selectedSlot.dateLabel} в {selectedSlot.time}</p>
-                  <p className="mt-1">Нажмите «Записаться на слот». Заявка сохранится без перехода на другую страницу.</p>
+                  <p className="mt-1">Нажмите «Отправить заявку». Страница останется открытой, а статус появится в разделе «Занятия».</p>
                 </div>
               ) : null}
             </section>
@@ -473,7 +461,7 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
                   className="inline-flex items-center gap-1 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  Записаться на слот
+                  Отправить заявку
                 </button>
               ) : (
                 <button
