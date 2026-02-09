@@ -72,7 +72,7 @@ export function ActiveCourses({ courses }: ActiveCoursesProps) {
               <div className="mt-4 flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">Преподаватель: {course.teacherName}</p>
                 <Link
-                  href={`/app/lessons?course=${course.id}`}
+                  href={`/app/courses/${course.id}`}
                   className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
                 >
                   {actionLabel}

@@ -1,8 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Clock3, Layers, PlayCircle } from "lucide-react";
+import { CalendarDays, Clock3, Layers, PlayCircle } from "lucide-react";
 
-import { StudentCourse } from "@/data/courses";
+import { getCourseEstimatedWeeks, getCourseModuleCount, StudentCourse } from "@/data/courses";
 
 import { ProgressBar } from "@/components/shared/ProgressBar";
 
@@ -20,11 +20,12 @@ type CourseCardProps = {
 
 export function CourseCard({ course }: CourseCardProps) {
   const progress = calculateProgress(course);
-  const actionLabel =
-    progress > 0 ? "Открыть курс" : course.accessType === "По расписанию" ? "Записаться" : "Начать курс";
+  const moduleCount = getCourseModuleCount(course.id);
+  const estimatedWeeks = getCourseEstimatedWeeks(course.id);
+  const actionLabel = progress > 0 ? "Продолжить курс" : "Открыть программу";
   const actionHint =
     course.accessType === "По расписанию"
-      ? "Живые уроки по расписанию"
+      ? "Модули + живые уроки по расписанию"
       : "Материалы доступны сразу";
 
   return (
@@ -51,11 +52,15 @@ export function CourseCard({ course }: CourseCardProps) {
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
             <Layers className="h-3.5 w-3.5" />
-            {course.lessonsTotal} уроков
+            {moduleCount} модулей • {course.lessonsTotal} уроков
           </span>
           <span className="inline-flex items-center gap-1">
             <Clock3 className="h-3.5 w-3.5" />
             {course.durationHours} часов
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <CalendarDays className="h-3.5 w-3.5" />
+            {estimatedWeeks} недель
           </span>
           <span className="inline-flex items-center gap-1 rounded-full border border-border bg-slate-100 px-2 py-0.5">
             {actionHint}
