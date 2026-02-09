@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Bell, ChevronDown, Menu, Search } from "lucide-react";
+import { Bell, Menu, Search } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -94,7 +94,7 @@ export function Topbar({ pathname, onOpenSidebar }: TopbarProps) {
           </button>
 
           <details className="relative">
-            <summary className="list-none">
+            <summary className="list-none [&::-webkit-details-marker]:hidden">
               <span className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-border bg-white px-2.5 py-1.5">
                 <Image
                   src={studentProfile.avatarUrl}
@@ -104,7 +104,6 @@ export function Topbar({ pathname, onOpenSidebar }: TopbarProps) {
                   className="h-[30px] w-[30px] rounded-xl"
                 />
                 <span className="hidden text-sm font-semibold text-foreground md:block">{studentProfile.name}</span>
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </span>
             </summary>
 
