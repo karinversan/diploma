@@ -1,214 +1,244 @@
-# Дипломная работа
-## Интеллектуальная веб-платформа онлайн-репетиторства с ИИ-поддержкой
+# Diploma Project
+## Intelligent Online Tutoring Platform with AI Support
 
 [![Next.js](https://img.shields.io/badge/Next.js-14.2-black?logo=nextdotjs)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
-## Содержание
+## Table of Contents
 
-- [О проекте](#о-проекте)
-- [Проблема и цель](#проблема-и-цель)
-- [Ключевые преимущества](#ключевые-преимущества)
-- [Роли платформы](#роли-платформы)
-- [Демонстрация интерфейса](#демонстрация-интерфейса)
-- [Функциональные модули](#функциональные-модули)
-- [Сквозные сценарии](#сквозные-сценарии)
-- [Архитектура](#архитектура)
-- [Структура проекта](#структура-проекта)
-- [Технологический стек](#технологический-стек)
-- [Статус реализации и roadmap](#статус-реализации-и-roadmap)
-- [Запуск проекта](#запуск-проекта)
-- [Демо-маршруты](#демо-маршруты)
+- [Project Overview](#project-overview)
+- [Problem and Objective](#problem-and-objective)
+- [Core Advantages](#core-advantages)
+- [Platform Roles](#platform-roles)
+- [Student Experience](#student-experience)
+- [Teacher Experience](#teacher-experience)
+- [Admin Experience](#admin-experience)
+- [Live Lesson and AI Layer](#live-lesson-and-ai-layer)
+- [End-to-End Workflows](#end-to-end-workflows)
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [Technology Stack](#technology-stack)
+- [Implementation Status and Roadmap](#implementation-status-and-roadmap)
+- [How to Run](#how-to-run)
+- [Demo Routes](#demo-routes)
+- [Media Checklist for Final Defense](#media-checklist-for-final-defense)
 
-## О проекте
+## Project Overview
 
-Этот репозиторий реализует дипломную тему: **интеллектуальная веб-платформа для онлайн-репетиторства с интеграцией ИИ в учебный процесс**.
+This repository contains the implementation of a diploma thesis focused on building an **intelligent web platform for online tutoring** with AI-assisted learning workflows.
 
-Платформа проектируется как единая среда для:
+The platform is designed as a unified environment for:
 
-- проведения онлайн-занятий;
-- совместной работы преподавателя и ученика во время урока;
-- сопровождения обучения между уроками;
-- операционного управления качеством и процессами на стороне администратора.
+- lesson discovery and booking;
+- lesson delivery and live interaction;
+- post-lesson learning support;
+- operational moderation and quality control.
 
-Проект покрывает полный продуктовый контур по ролям: `ученик`, `преподаватель`, `администратор`.
+It already includes complete role-based product flows for:
 
-## Проблема и цель
+- student;
+- teacher;
+- administrator.
 
-### Проблема
+![Product overview screenshot - TODO](docs/media/overview/platform-overview.png)
+_What should be here: a high-level screenshot of the landing page plus role entry points to show the full product scope._
 
-Большинство популярных образовательных решений закрывают только отдельные части процесса: видеосвязь, каталог преподавателей, тесты или домашние задания. В результате учебный цикл разорван между несколькими сервисами, а преподаватель тратит время на рутинные операции.
+## Problem and Objective
 
-### Цель дипломной работы
+### Problem
 
-Построить прототип платформы, которая объединяет в одном продукте:
+Most online education products cover only one part of the process (video calls, teacher marketplace, quizzes, or homework). This causes fragmented user journeys and extra manual work for teachers.
 
-- расписание, бронирование и оплату занятий;
-- live-урок с интерактивным контуром;
-- инструменты сопровождения обучения;
-- ИИ-поддержку (распознавание речи, объяснение, рекомендации, конспект).
+### Diploma Objective
 
-## Ключевые преимущества
+Build a prototype platform that combines:
 
-1. **Единый учебный цикл**: от выбора преподавателя и бронирования до урока, оплаты, домашней работы и аналитики.
-2. **Ролевая операционная модель**: отдельные рабочие контуры для ученика, преподавателя и администратора без смешения задач.
-3. **Готовность к ИИ-интеграциям**: структура модулей позволяет подключать ASR, автоконспект, проверку ответов и рекомендательные алгоритмы.
-4. **Прозрачные бизнес-сценарии**: поддержан жизненный цикл заявок на занятия и заявок преподавателей с понятными статусами.
-5. **Масштабируемая архитектура**: текущая реализация уже разделена по доменным зонам, что упрощает переход к production backend.
+- scheduling, booking, and payment flows;
+- live lessons with interactive collaboration;
+- structured learning support between lessons;
+- AI-powered assistance (speech processing, explanations, recommendations, lesson summary generation).
 
-## Роли платформы
+![Problem-to-solution flow GIF - TODO](docs/media/overview/problem-solution-flow.gif)
+_What should be here: a short GIF that shows the fragmented legacy flow vs the unified platform flow._
 
-| Роль | Основная ценность | Ключевые задачи |
+## Core Advantages
+
+1. **Unified learning lifecycle** from tutor selection to lesson, payment, homework, and analytics.
+2. **Role-centered product design** with separate operational environments for student, teacher, and admin.
+3. **AI-ready architecture** that supports future integration of ASR, lesson summary, answer checking, and recommendations.
+4. **Clear domain workflows** for lesson booking moderation and tutor application moderation.
+5. **Scalable modular codebase** structured for transition from prototype state to full production backend.
+
+![Core value proposition screenshot - TODO](docs/media/overview/core-advantages.png)
+_What should be here: one visual slide/card showing key differentiators and platform benefits._
+
+## Platform Roles
+
+| Role | Primary Value | Key Responsibilities |
 | --- | --- | --- |
-| Ученик | Управление персональной траекторией обучения | Курсы, занятия, live-урок, домашние задания, словарь, оплата, аналитика |
-| Преподаватель | Управление учебным процессом и контентом | Календарь, обработка заявок, редактирование курсов, квизы, коммуникация, выплаты |
-| Администратор | Контроль качества и операций платформы | Модерация преподавателей, управление пользователями, инциденты, возвраты, quality-метрики |
+| Student | Personal learning trajectory management | Courses, booking, live classes, homework, vocabulary, payments, analytics |
+| Teacher | Teaching operations and content control | Requests moderation, calendar, course editing, quizzes, communication, payouts |
+| Administrator | Platform quality and operational governance | Tutor verification, user moderation, incidents, payment disputes, quality metrics |
 
-## Демонстрация интерфейса
+![Role model diagram - TODO](docs/media/roles/role-model-diagram.png)
+_What should be here: a simple diagram showing responsibilities and touchpoints for all three roles._
 
-Ниже размещены заглушки, показывающие, какие скриншоты и GIF должны быть в финальной версии README.
+## Student Experience
 
-### 1. Публичный контур
+The student workspace includes:
 
-![Landing overview placeholder](docs/readme-assets/01-landing-overview-placeholder.svg)
+- dashboard with KPIs, tasks, calendar, and insights;
+- course catalog and detailed course pages;
+- unit-level learning pages;
+- lessons module with request statuses and schedule visibility;
+- homework workflows;
+- vocabulary module and spaced-repetition logic;
+- messaging and analytics;
+- payment flow for confirmed lesson slots.
 
-### 2. Контур ученика
+![Student dashboard screenshot - TODO](docs/media/student/student-dashboard.png)
+_What should be here: the main student dashboard showing KPI cards, upcoming lessons, and current learning state._
 
-![Student app placeholder](docs/readme-assets/02-student-app-placeholder.svg)
+![Student booking-to-payment GIF - TODO](docs/media/student/student-booking-payment-flow.gif)
+_What should be here: a GIF of booking request creation, teacher confirmation, and payment completion._
 
-![Student flow GIF placeholder](docs/readme-assets/gif-student-flow-placeholder.svg)
+![Student homework and vocabulary screenshot - TODO](docs/media/student/student-homework-vocabulary.png)
+_What should be here: homework status and vocabulary tools in one combined visual._
 
-### 3. Live-урок
+## Teacher Experience
 
-![Live classroom placeholder](docs/readme-assets/03-live-classroom-placeholder.svg)
+The teacher workspace provides:
 
-### 4. Контур преподавателя
+- operational dashboard with pending actions and metrics;
+- onboarding/verification status visibility;
+- classroom center with lesson request handling;
+- actions for `confirm`, `reschedule`, `decline`, `cancel`;
+- course management and course editor;
+- quiz builder and result review;
+- messaging, analytics, and payouts sections.
 
-![Teacher cabinet placeholder](docs/readme-assets/04-teacher-cabinet-placeholder.svg)
+![Teacher dashboard screenshot - TODO](docs/media/teacher/teacher-dashboard.png)
+_What should be here: teacher dashboard with pending lesson requests and teaching KPIs._
 
-![Teacher flow GIF placeholder](docs/readme-assets/gif-teacher-flow-placeholder.svg)
+![Teacher classroom moderation GIF - TODO](docs/media/teacher/teacher-classroom-moderation.gif)
+_What should be here: a GIF that demonstrates request moderation and schedule updates._
 
-### 5. Контур администратора
+![Teacher course editor screenshot - TODO](docs/media/teacher/teacher-course-editor.png)
+_What should be here: course editor UI with module/lesson content structure._
 
-![Admin panel placeholder](docs/readme-assets/05-admin-panel-placeholder.svg)
+## Admin Experience
 
-![Admin flow GIF placeholder](docs/readme-assets/gif-admin-flow-placeholder.svg)
+The admin panel is designed for platform operations:
 
-### 6. Архитектурная схема
+- platform health and operations dashboard;
+- tutor application moderation;
+- user role/status control;
+- lesson incident tracking;
+- payment dispute/refund operations;
+- quality monitoring view.
 
-![Architecture placeholder](docs/readme-assets/06-architecture-placeholder.svg)
+![Admin dashboard screenshot - TODO](docs/media/admin/admin-dashboard.png)
+_What should be here: admin dashboard with moderation queue and operational KPIs._
 
-## Функциональные модули
+![Admin moderation workflow GIF - TODO](docs/media/admin/admin-moderation-workflow.gif)
+_What should be here: a GIF showing tutor application status transitions and admin actions._
 
-### Публичная зона
+![Admin quality panel screenshot - TODO](docs/media/admin/admin-quality-panel.png)
+_What should be here: quality metrics view with testing and monitoring indicators._
 
-- лендинг с продуктовой воронкой и ценностным предложением;
-- предварительное тестирование уровня знаний (`/assessment`);
-- каталог преподавателей и публичные профили (`/teachers`, `/teachers/[id]`);
-- формы лидогенерации для ученика и преподавателя (`/lead`, `/for-tutors`);
-- юридические и информационные страницы.
+## Live Lesson and AI Layer
 
-### Личный кабинет ученика
+The live lesson layer is planned as a synchronized teaching environment with:
 
-- дашборд с KPI, задачами, календарем и AI-инсайтами;
-- каталог курсов и страница курса с модульной структурой;
-- просмотр unit-материалов и прогресса обучения;
-- модуль занятий: календарь, статусы заявок, карточки уроков, детали урока;
-- live-комната урока (интерфейс совместной работы и взаимодействия);
-- домашние задания с различными сценариями проверки;
-- словарь с группировкой и режимом повторения;
-- сообщения с преподавателями;
-- аналитика обучения и платежный раздел.
+- video communication;
+- shared interactive board;
+- collaborative tasks and quick checks;
+- contextual AI support during and after the lesson.
 
-### Личный кабинет преподавателя
+Current repository state already models this layer at the UI/UX and workflow level.
 
-- дашборд с оперативными показателями и задачами;
-- онбординг преподавателя и отображение статуса модерации;
-- classroom-центр с календарем и управлением заявками на занятия;
-- управление курсами и редактор контента;
-- конструктор квизов и просмотр результатов;
-- коммуникация с учениками, аналитика и выплаты.
+![Live classroom screenshot - TODO](docs/media/live/live-classroom.png)
+_What should be here: full classroom interface with lesson controls, board area, and communication panel._
 
-### Административная панель
+![Live collaboration GIF - TODO](docs/media/live/live-collaboration.gif)
+_What should be here: a GIF of real-time interactions during a lesson._
 
-- обзор операционных показателей;
-- модерация заявок преподавателей;
-- управление ролями и статусами пользователей;
-- контроль инцидентов по занятиям;
-- управление платежными спорами и возвратами;
-- quality-раздел с метриками и операционными проверками.
+![AI support panel screenshot - TODO](docs/media/live/ai-support-panel.png)
+_What should be here: AI-generated notes/explanations/recommendations panel tied to lesson context._
 
-### Доменные процессы, уже отраженные в логике
+## End-to-End Workflows
 
-- жизненный цикл записи на урок: `pending -> awaiting_payment -> paid` + ветки `reschedule_proposed`, `declined`, `cancelled`;
-- жизненный цикл заявки преподавателя: `pending`, `approved`, `rejected`;
-- синхронизация состояния между кабинетами через локальные хранилища браузера.
+### Student Workflow
 
-## Сквозные сценарии
+1. Select a teacher or course.
+2. Send a lesson booking request.
+3. Receive confirmation or reschedule proposal.
+4. Pay for a confirmed slot.
+5. Attend the lesson and continue post-lesson activities.
 
-### Ученик
+### Teacher Workflow
 
-1. Выбирает курс или преподавателя.
-2. Отправляет заявку на слот занятия.
-3. Получает подтверждение или предложение переноса.
-4. Оплачивает подтвержденный слот.
-5. Проходит урок и выполняет пост-урочные активности.
+1. Receive incoming booking request.
+2. Confirm, reschedule, or decline.
+3. Track paid lessons in schedule.
+4. Deliver lesson and update learning content.
 
-### Преподаватель
+### Admin Workflow
 
-1. Получает заявку на занятие.
-2. Подтверждает, отклоняет или предлагает перенос.
-3. После оплаты видит занятие в актуальном расписании.
-4. Управляет материалами курса и тестами.
+1. Review tutor applications.
+2. Moderate users and platform operations.
+3. Resolve incidents and payment disputes.
 
-### Администратор
+![Cross-role journey map - TODO](docs/media/workflows/cross-role-journey-map.png)
+_What should be here: a combined journey map across student, teacher, and admin workflows._
 
-1. Обрабатывает заявки преподавателей.
-2. Контролирует пользователей и состояние платформы.
-3. Ведет операционные процессы по инцидентам и платежам.
+## Architecture
 
-## Архитектура
+### Current Implementation
 
-### Текущая реализация
+- Next.js App Router as the frontend platform shell;
+- role-based route segmentation (`/app`, `/teacher`, `/admin`);
+- domain mock datasets in `data/*`;
+- domain client logic in `lib/*`;
+- local persistent state via `localStorage` for prototype scenarios.
 
-- Next.js App Router как единая клиентская оболочка;
-- доменные данные и сценарии в `data/*`;
-- бизнес-утилиты в `lib/*`;
-- клиентские модули по ролям в `components/*`;
-- локальное персистентное состояние через `localStorage`.
+### Target Architecture (from diploma plan)
 
-### Целевая архитектура по дипломному плану
+- frontend web client;
+- backend API and business domain services;
+- realtime transport for collaborative sessions;
+- AI service layer for tutoring intelligence;
+- persistent storage for users, lessons, results, and knowledge artifacts;
+- QA pipeline with unit/integration/e2e and quality metrics.
 
-- frontend (role-based web client);
-- backend API и доменная серверная логика;
-- realtime-слой (WebRTC/WebSocket);
-- AI-сервисы (ASR, генерация конспекта, объяснение, рекомендации);
-- база данных (пользователи, уроки, задания, результаты, словарь, заметки);
-- тестовый и quality-контур (unit/integration/e2e, UX и AI-метрики).
+![Architecture diagram - TODO](docs/media/architecture/solution-architecture.png)
+_What should be here: final architecture diagram with frontend, backend, realtime, AI, and data layers._
 
-## Структура проекта
+![Data model diagram - TODO](docs/media/architecture/data-model-erd.png)
+_What should be here: ER diagram for users, lessons, assessments, notes, and recommendations._
+
+## Project Structure
 
 ```text
-app/                  маршруты и ролевые зоны (public, student, teacher, admin)
-components/           UI-модули по доменам и ролям
-data/                 типизированные мок-данные и сценарные наборы
-lib/                  доменная клиентская логика и утилиты состояния
-hooks/                прикладные React hooks (фильтрация, календарь и т.д.)
-public/               статические ассеты интерфейса
-docs/readme-assets/   изображения и GIF для README (сейчас заглушки)
-Plan_isprav.docx      план дипломной работы
+app/                  route tree and role-specific pages
+components/           UI modules by product domain
+data/                 typed mock domain data
+lib/                  domain logic and state helpers
+hooks/                reusable application hooks
+public/               static assets
+Plan_isprav.docx      diploma plan document
 ```
 
-### Ключевые доменные файлы
+Key domain files:
 
-- `lib/lesson-bookings.ts`: модель и операции по заявкам на занятия;
-- `lib/tutor-applications.ts`: модель и операции по заявкам преподавателей;
-- `lib/demo-role.ts`: демо-авторизация и маршрутизация по роли.
+- `lib/lesson-bookings.ts` for booking lifecycle logic;
+- `lib/tutor-applications.ts` for tutor onboarding moderation;
+- `lib/demo-role.ts` for demo role routing.
 
-## Технологический стек
+## Technology Stack
 
-### В текущей реализации
+Current prototype stack:
 
 - Next.js 14 (App Router)
 - React 18
@@ -217,72 +247,98 @@ Plan_isprav.docx      план дипломной работы
 - Radix UI
 - Lucide Icons
 
-### В целевой версии платформы
+Target production stack:
 
-- Node.js / NestJS (backend)
-- PostgreSQL (хранение доменных сущностей)
-- WebRTC + WebSocket (realtime-компоненты)
-- Python/FastAPI + AI API (интеллектуальные сервисы)
+- Node.js / NestJS backend
+- PostgreSQL
+- WebRTC + WebSocket for realtime collaboration
+- Python/FastAPI + AI APIs for intelligence modules
 
-## Статус реализации и roadmap
+## Implementation Status and Roadmap
 
-### Реализовано
+Implemented now:
 
-- полный ролевой UI-контур платформы;
-- ключевые пользовательские сценарии ученика, преподавателя и администратора;
-- доменная логика заявок на занятия и заявок преподавателей;
-- маршруты и состояния, отражающие жизненный цикл основных процессов.
+- complete multi-role frontend prototype;
+- core student/teacher/admin operational flows;
+- booking and tutor-application status lifecycles;
+- coherent route and state architecture for product demonstration.
 
-### В разработке
+In progress:
 
-- backend API и постоянное хранилище данных;
-- production-аутентификация и RBAC;
-- полноценный realtime-контур урока;
-- интеграция реальных AI-сервисов;
-- автоматизированные тестовые контуры и CI/CD.
+- backend APIs and persistent database integration;
+- production authentication and RBAC;
+- full realtime lesson engine;
+- production AI service integrations;
+- automated testing pipeline and CI/CD.
 
-## Запуск проекта
+![Roadmap timeline - TODO](docs/media/roadmap/implementation-roadmap.png)
+_What should be here: timeline of delivered and planned milestones for the diploma project._
 
-### Требования
+## How to Run
+
+Requirements:
 
 - Node.js 18+
 - npm 9+
 
-### Установка зависимостей
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-### Режим разработки
+Run development server:
 
 ```bash
 npm run dev
 ```
 
-Приложение будет доступно по адресу: `http://localhost:3000`.
+Open: `http://localhost:3000`
 
-### Production-сборка
+Build for production:
 
 ```bash
 npm run build
 npm run start
 ```
 
-### Проверка линтером
+Lint:
 
 ```bash
 npm run lint
 ```
 
-## Демо-маршруты
+## Demo Routes
 
-- Ученик: `/login?role=student` -> `/app/dashboard`
-- Преподаватель: `/login?role=teacher` -> `/teacher/dashboard`
-- Администратор: `/login?role=admin` -> `/admin/dashboard`
+- Student: `/login?role=student` -> `/app/dashboard`
+- Teacher: `/login?role=teacher` -> `/teacher/dashboard`
+- Admin: `/login?role=admin` -> `/admin/dashboard`
 
-## Что заменить перед финальной презентацией
+![Demo routes quick map - TODO](docs/media/demo/demo-routes-map.png)
+_What should be here: compact route map for rapid navigation during project demo._
 
-1. Заглушки в `docs/readme-assets/*` на реальные скриншоты и GIF.
-2. Архитектурный placeholder на итоговую диаграмму из диплома.
-3. При наличии backend-части дополнить README ссылками на API и схемой данных.
+## Media Checklist for Final Defense
+
+Create and add these files before final presentation:
+
+- `docs/media/overview/platform-overview.png`
+- `docs/media/overview/problem-solution-flow.gif`
+- `docs/media/overview/core-advantages.png`
+- `docs/media/roles/role-model-diagram.png`
+- `docs/media/student/student-dashboard.png`
+- `docs/media/student/student-booking-payment-flow.gif`
+- `docs/media/student/student-homework-vocabulary.png`
+- `docs/media/teacher/teacher-dashboard.png`
+- `docs/media/teacher/teacher-classroom-moderation.gif`
+- `docs/media/teacher/teacher-course-editor.png`
+- `docs/media/admin/admin-dashboard.png`
+- `docs/media/admin/admin-moderation-workflow.gif`
+- `docs/media/admin/admin-quality-panel.png`
+- `docs/media/live/live-classroom.png`
+- `docs/media/live/live-collaboration.gif`
+- `docs/media/live/ai-support-panel.png`
+- `docs/media/workflows/cross-role-journey-map.png`
+- `docs/media/architecture/solution-architecture.png`
+- `docs/media/architecture/data-model-erd.png`
+- `docs/media/roadmap/implementation-roadmap.png`
+- `docs/media/demo/demo-routes-map.png`
