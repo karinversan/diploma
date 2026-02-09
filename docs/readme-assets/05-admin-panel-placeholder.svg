@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Admin panel placeholder">
+  <rect width="1280" height="720" fill="#fff7ed" />
+  <rect x="36" y="36" width="1208" height="648" rx="24" fill="#ffffff" stroke="#fdba74" stroke-width="3" />
+  <text x="76" y="120" fill="#7c2d12" font-size="46" font-family="Arial, sans-serif" font-weight="700">PLACEHOLDER SCREENSHOT</text>
+  <text x="76" y="180" fill="#9a3412" font-size="32" font-family="Arial, sans-serif">Admin Panel: Users + Lessons + Payments + Quality</text>
+  <text x="76" y="245" fill="#c2410c" font-size="24" font-family="Arial, sans-serif">Replace with /admin/dashboard and KPI + moderation queue visible.</text>
+  <rect x="76" y="292" width="1128" height="128" rx="14" fill="#fff7ed" stroke="#fdba74" stroke-dasharray="8 8" />
+  <rect x="76" y="438" width="560" height="192" rx="14" fill="#fff7ed" stroke="#fdba74" stroke-dasharray="8 8" />
+  <rect x="644" y="438" width="560" height="192" rx="14" fill="#fff7ed" stroke="#fdba74" stroke-dasharray="8 8" />
+  <text x="530" y="367" fill="#ea580c" font-size="22" font-family="Arial, sans-serif">Operational KPIs</text>
+  <text x="250" y="545" fill="#ea580c" font-size="22" font-family="Arial, sans-serif">Verification Queue</text>
+  <text x="842" y="545" fill="#ea580c" font-size="22" font-family="Arial, sans-serif">Quality & Actions</text>
+</svg>

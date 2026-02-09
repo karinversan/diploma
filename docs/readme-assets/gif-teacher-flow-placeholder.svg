@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Teacher flow gif placeholder">
+  <rect width="1280" height="720" fill="#dcfce7" />
+  <text x="70" y="120" fill="#14532d" font-size="48" font-family="Arial, sans-serif" font-weight="700">GIF PLACEHOLDER</text>
+  <text x="70" y="180" fill="#166534" font-size="34" font-family="Arial, sans-serif">Teacher Workflow</text>
+  <text x="70" y="245" fill="#15803d" font-size="24" font-family="Arial, sans-serif">review booking requests -> confirm slot -> edit course -> build quiz -> track analytics</text>
+  <rect x="70" y="300" width="1140" height="320" rx="18" fill="#ffffff" stroke="#4ade80" stroke-width="3" stroke-dasharray="10 8" />
+  <text x="355" y="470" fill="#16a34a" font-size="30" font-family="Arial, sans-serif">Replace with real recorded GIF (20-40 sec)</text>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Admin flow gif placeholder">
+  <rect width="1280" height="720" fill="#ffedd5" />
+  <text x="70" y="120" fill="#7c2d12" font-size="48" font-family="Arial, sans-serif" font-weight="700">GIF PLACEHOLDER</text>
+  <text x="70" y="180" fill="#9a3412" font-size="34" font-family="Arial, sans-serif">Admin Moderation Flow</text>
+  <text x="70" y="245" fill="#c2410c" font-size="24" font-family="Arial, sans-serif">verify tutor -> inspect incidents -> process refund -> run quality checks</text>
+  <rect x="70" y="300" width="1140" height="320" rx="18" fill="#ffffff" stroke="#fb923c" stroke-width="3" stroke-dasharray="10 8" />
+  <text x="355" y="470" fill="#ea580c" font-size="30" font-family="Arial, sans-serif">Replace with real recorded GIF (20-40 sec)</text>
+</svg>

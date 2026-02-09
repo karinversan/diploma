@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Student flow gif placeholder">
+  <rect width="1280" height="720" fill="#e0e7ff" />
+  <text x="70" y="120" fill="#312e81" font-size="48" font-family="Arial, sans-serif" font-weight="700">GIF PLACEHOLDER</text>
+  <text x="70" y="180" fill="#3730a3" font-size="34" font-family="Arial, sans-serif">Student End-to-End Flow</text>
+  <text x="70" y="245" fill="#4338ca" font-size="24" font-family="Arial, sans-serif">login -> choose course -> book lesson -> pay -> live lesson -> homework</text>
+  <rect x="70" y="300" width="1140" height="320" rx="18" fill="#ffffff" stroke="#818cf8" stroke-width="3" stroke-dasharray="10 8" />
+  <text x="355" y="470" fill="#6366f1" font-size="30" font-family="Arial, sans-serif">Replace with real recorded GIF (20-40 sec)</text>
+</svg>
