@@ -515,47 +515,62 @@ export function CourseLearningExperience({
                         const Icon = getKindIcon(lesson.kind);
                         const isCompleted = completedSet.has(lesson.id);
                         const unlocked = isUnitUnlocked(lesson.id);
+                        const unitHref = getCourseUnitHref(course.id, lesson.id);
+                        const lessonTextContent = (
+                          <>
+                            <p className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                              <Icon className="h-3.5 w-3.5 text-primary" />
+                              {lesson.kind}
+                              <span className="inline-flex items-center gap-1">
+                                <Clock3 className="h-3.5 w-3.5" />
+                                {lesson.durationMinutes} мин
+                              </span>
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-foreground">{lesson.title}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{lesson.description}</p>
+                            {lesson.hasAutoCheck ? (
+                              <span className="mt-2 inline-flex rounded-full border border-border bg-slate-50 px-2 py-0.5 text-[11px] text-muted-foreground">
+                                Автопроверка
+                              </span>
+                            ) : null}
+                            {lesson.hasTeacherReview ? (
+                              <span className="mt-2 ml-1 inline-flex rounded-full border border-border bg-slate-50 px-2 py-0.5 text-[11px] text-muted-foreground">
+                                ИИ + преподаватель
+                              </span>
+                            ) : null}
+                            {lesson.isPreview ? (
+                              <span className="mt-2 ml-1 inline-flex rounded-full border border-accent/70 bg-accent/35 px-2 py-0.5 text-[11px] font-semibold text-slate-900">
+                                Открытый доступ
+                              </span>
+                            ) : null}
+                          </>
+                        );
 
                         return (
                           <article
                             key={lesson.id}
                             className={cn(
-                              "rounded-2xl border bg-white p-3",
+                              "rounded-2xl border bg-white p-3 transition-transform duration-200",
                               isCompleted
                                 ? "border-emerald-300"
                                 : unlocked
                                   ? "border-border"
-                                  : "border-dashed border-slate-300 opacity-75"
+                                  : "border-dashed border-slate-300 opacity-75",
+                              unlocked ? "hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-lg" : ""
                             )}
                           >
                             <div className="flex flex-wrap items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-                                  <Icon className="h-3.5 w-3.5 text-primary" />
-                                  {lesson.kind}
-                                  <span className="inline-flex items-center gap-1">
-                                    <Clock3 className="h-3.5 w-3.5" />
-                                    {lesson.durationMinutes} мин
-                                  </span>
-                                </p>
-                                <p className="mt-1 text-sm font-semibold text-foreground">{lesson.title}</p>
-                                <p className="mt-1 text-xs text-muted-foreground">{lesson.description}</p>
-                                {lesson.hasAutoCheck ? (
-                                  <span className="mt-2 inline-flex rounded-full border border-border bg-slate-50 px-2 py-0.5 text-[11px] text-muted-foreground">
-                                    Автопроверка
-                                  </span>
-                                ) : null}
-                                {lesson.hasTeacherReview ? (
-                                  <span className="mt-2 ml-1 inline-flex rounded-full border border-border bg-slate-50 px-2 py-0.5 text-[11px] text-muted-foreground">
-                                    ИИ + преподаватель
-                                  </span>
-                                ) : null}
-                                {lesson.isPreview ? (
-                                  <span className="mt-2 ml-1 inline-flex rounded-full border border-accent/70 bg-accent/35 px-2 py-0.5 text-[11px] font-semibold text-slate-900">
-                                    Открытый доступ
-                                  </span>
-                                ) : null}
-                              </div>
+                              {unlocked ? (
+                                <Link
+                                  href={unitHref}
+                                  className="min-w-0 flex-1 rounded-xl p-1 -m-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                                  aria-label={`${getUnitOpenLabel(lesson.kind)}: ${lesson.title}`}
+                                >
+                                  {lessonTextContent}
+                                </Link>
+                              ) : (
+                                <div className="min-w-0 flex-1">{lessonTextContent}</div>
+                              )}
 
                               <div className="flex flex-wrap items-center gap-2">
                                 {isCompleted ? (
@@ -572,7 +587,7 @@ export function CourseLearningExperience({
 
                                 {unlocked ? (
                                   <Link
-                                    href={getCourseUnitHref(course.id, lesson.id)}
+                                    href={unitHref}
                                     className="inline-flex items-center justify-center rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
                                   >
                                     {getUnitOpenLabel(lesson.kind)}

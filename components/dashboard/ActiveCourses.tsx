@@ -36,9 +36,11 @@ export function ActiveCourses({ courses }: ActiveCoursesProps) {
           const actionLabel = course.lessonsCompleted > 0 ? "Продолжить" : "Начать";
 
           return (
-            <article
+            <Link
               key={course.id}
-              className={`rounded-3xl border p-4 transition ${
+              href={`/app/courses/${course.id}`}
+              aria-label={`Открыть курс ${course.title}`}
+              className={`block transform-gpu rounded-3xl border p-4 transition duration-200 hover:-translate-y-1 hover:scale-[1.015] hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
                 course.isFeatured
                   ? "border-primary/30 bg-[linear-gradient(130deg,rgba(116,76,255,0.12),rgba(185,250,119,0.2))]"
                   : "border-border bg-slate-50"
@@ -71,14 +73,11 @@ export function ActiveCourses({ courses }: ActiveCoursesProps) {
 
               <div className="mt-4 flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">Преподаватель: {course.teacherName}</p>
-                <Link
-                  href={`/app/courses/${course.id}`}
-                  className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
-                >
+                <span className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground">
                   {actionLabel}
-                </Link>
+                </span>
               </div>
-            </article>
+            </Link>
           );
         })}
       </div>

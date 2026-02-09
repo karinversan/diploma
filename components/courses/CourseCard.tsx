@@ -29,8 +29,10 @@ export function CourseCard({ course }: CourseCardProps) {
       : "Материалы доступны сразу";
 
   return (
-    <article
-      className={`overflow-hidden rounded-3xl border shadow-card transition hover:-translate-y-0.5 ${
+    <Link
+      href={`/app/courses/${course.id}`}
+      aria-label={`Открыть курс ${course.title}`}
+      className={`block transform-gpu overflow-hidden rounded-3xl border shadow-card transition duration-200 hover:-translate-y-1 hover:scale-[1.015] hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
         course.isFeatured
           ? "border-primary/25 bg-[linear-gradient(140deg,rgba(116,76,255,0.14),rgba(185,250,119,0.14))]"
           : "border-border bg-white"
@@ -79,15 +81,12 @@ export function CourseCard({ course }: CourseCardProps) {
 
         <div className="mt-4 flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">{course.teacherName}</p>
-          <Link
-            href={`/app/courses/${course.id}`}
-            className="inline-flex items-center gap-1 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
-          >
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground">
             <PlayCircle className="h-3.5 w-3.5" />
             {actionLabel}
-          </Link>
+          </span>
         </div>
       </div>
-    </article>
+    </Link>
   );
 }
