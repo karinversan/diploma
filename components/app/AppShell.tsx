@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { BookOpen, GraduationCap, LayoutDashboard, MessageSquare, NotebookText } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Sidebar } from "@/components/app/Sidebar";
@@ -27,11 +27,21 @@ function isMobileItemActive(pathname: string, href: string) {
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const isLiveLessonRoom = pathname.startsWith("/app/lessons/") && searchParams.get("live") === "1";
 
   useEffect(() => {
     setIsMobileSidebarOpen(false);
   }, [pathname]);
+
+  if (isLiveLessonRoom) {
+    return (
+      <div className="min-h-screen bg-[#d3d8e3] p-2 sm:p-3 lg:p-4">
+        <main className="mx-auto max-w-[1680px]">{children}</main>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_18%_10%,rgba(116,76,255,0.11),transparent_32%),radial-gradient(circle_at_90%_0%,rgba(185,250,119,0.2),transparent_26%),#f7f8ff]">

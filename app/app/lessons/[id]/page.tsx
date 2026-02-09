@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Clock3, MessageSquare, Video } from "lucide-react";
 
+import { LiveCallRoom } from "@/components/lessons/LiveCallRoom";
 import { LessonTabs } from "@/components/lessons/LessonTabs";
 import { getTeacherById } from "@/data/teachers";
 import { homeworkItems } from "@/data/homework";
@@ -59,18 +60,20 @@ export default function LessonDetailsPage({ params, searchParams }: LessonDetail
   const lessonHomework = homeworkItems.filter((item) => item.lessonId === lesson.id);
   const lessonVocabulary = vocabularyWords.filter((word) => word.lessonId === lesson.id);
 
+  if (isLiveMode) {
+    return (
+      <LiveCallRoom
+        lesson={lesson}
+        backHref={`/app/lessons/${lesson.id}`}
+        teacherAvatarUrl={teacher?.avatarUrl}
+        vocabulary={lessonVocabulary}
+        homework={lessonHomework}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {isLiveMode ? (
-        <section className="rounded-3xl border border-accent/70 bg-accent/30 p-4 text-sm text-slate-900 shadow-card">
-          <p className="font-semibold">Вы в демо-режиме онлайн-класса.</p>
-          <p className="mt-1">Здесь будет WebRTC-комната урока, чат и интерактивная доска.</p>
-          <Link href={`/app/lessons/${lesson.id}`} className="mt-3 inline-flex rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white">
-            Вернуться к материалам урока
-          </Link>
-        </section>
-      ) : null}
-
       <section className="rounded-3xl border border-border bg-white p-5 shadow-card sm:p-6">
         <nav aria-label="Хлебные крошки" className="text-sm text-muted-foreground">
           <Link href="/app/lessons" className="hover:text-foreground">

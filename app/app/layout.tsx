@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { AppShell } from "@/components/app/AppShell";
 
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function StudentAppLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <AppShell>{children}</AppShell>;
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <AppShell>{children}</AppShell>
+    </Suspense>
+  );
 }
