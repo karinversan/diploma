@@ -287,7 +287,7 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
   const [isSupportPanelOpen, setIsSupportPanelOpen] = useState(true);
   const [isWorkspaceVisible, setIsWorkspaceVisible] = useState(true);
   const [isVideoVisible, setIsVideoVisible] = useState(true);
-  const [areParticipantTilesVisible, setAreParticipantTilesVisible] = useState(true);
+  const [areParticipantTilesVisible, setAreParticipantTilesVisible] = useState(false);
 
   const [draftMessage, setDraftMessage] = useState("");
   const [copiedRoomId, setCopiedRoomId] = useState(false);
@@ -460,6 +460,36 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
 
   const selectedNote = selectedNoteId ? boardNotes.find((note) => note.id === selectedNoteId) : null;
   const boardZoomPercent = `${Math.round(boardScale * 100)}%`;
+  const isVideoOnlyMode = isVideoVisible && !isWorkspaceVisible && !isSupportPanelOpen;
+  const isVideoWithChatMode = isVideoVisible && isSupportPanelOpen;
+  const isVideoWithWorkspaceMode = isVideoVisible && isWorkspaceVisible;
+  const isVideoStandaloneMode = isVideoVisible && !isWorkspaceVisible;
+  const showWorkspaceToolbar = !isVideoOnlyMode;
+  const participantsCount = Math.max(0, participants.length - 1);
+
+  const videoStageClassName = cn(
+    "relative w-full overflow-hidden rounded-xl",
+    isVideoOnlyMode
+      ? "mx-auto aspect-[4/3] max-h-[62vh] max-w-[920px]"
+      : isVideoWithChatMode && isVideoWithWorkspaceMode
+        ? "aspect-[5/4] max-h-[44vh] max-w-[700px]"
+        : isVideoWithChatMode
+          ? "aspect-[16/10] max-h-[48vh] max-w-[820px]"
+          : "aspect-video max-h-[56vh] max-w-[980px]"
+  );
+
+  const participantsGridClassName = cn(
+    "mt-2 grid justify-center gap-2 overflow-y-auto pr-1",
+    isVideoOnlyMode ? "max-h-40 [grid-template-columns:repeat(auto-fit,minmax(170px,220px))]" : "",
+    isVideoWithChatMode ? "max-h-36 [grid-template-columns:repeat(auto-fit,minmax(120px,156px))]" : "",
+    !isVideoOnlyMode && !isVideoWithChatMode ? "max-h-44 [grid-template-columns:repeat(auto-fit,minmax(138px,182px))]" : ""
+  );
+
+  useEffect(() => {
+    if (isVideoOnlyMode) {
+      setAreParticipantTilesVisible(false);
+    }
+  }, [isVideoOnlyMode]);
 
   const handleSendMessage = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -772,7 +802,14 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
   }
 
   return (
-    <section className="rounded-[2rem] border border-border bg-[#eceef3] p-4 shadow-card sm:p-6">
+    <section
+      className={cn(
+        "rounded-[2rem] border border-border bg-[#eceef3] p-4 shadow-card sm:p-6",
+        isAuthorized
+          ? "flex h-[calc(100dvh-1rem)] flex-col overflow-hidden sm:h-[calc(100dvh-1.5rem)] lg:h-[calc(100dvh-2rem)]"
+          : ""
+      )}
+    >
       {!isAuthorized ? (
         <article className="mx-auto max-w-2xl rounded-[1.8rem] border border-border bg-white p-8 shadow-card">
           <div className="flex items-start gap-3">
@@ -823,7 +860,7 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
 
       {isAuthorized ? (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Link
                 href={backHref}
@@ -893,35 +930,48 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
             </div>
           </div>
 
-          <div className={cn("mt-4 grid gap-4", isSupportPanelOpen ? "2xl:grid-cols-[minmax(0,1fr)_360px]" : "") }>
-            <article className="rounded-[1.8rem] border border-border bg-white p-3 shadow-card sm:p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-slate-50 p-2.5">
-                <div className="flex gap-2">
-                  {[
-                    { id: "board", label: "Интерактивная доска" },
-                    { id: "quiz", label: "Совместный тест" }
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setActiveWorkspace(item.id as WorkspaceTab)}
-                      className={cn(
-                        "rounded-full px-4 py-2 text-sm font-semibold transition",
-                        activeWorkspace === item.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-white"
-                      )}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
+          <div className={cn("mt-4 grid min-h-0 flex-1 gap-4 overflow-hidden", isSupportPanelOpen ? "2xl:grid-cols-[minmax(0,1fr)_340px]" : "") }>
+            <article className={cn("flex min-h-0 flex-col rounded-[1.8rem] border border-border bg-white shadow-card", showWorkspaceToolbar ? "p-3 sm:p-4" : "p-2 sm:p-3")}>
+              {showWorkspaceToolbar ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-slate-50 p-2.5">
+                  <div className="flex gap-2">
+                    {[
+                      { id: "board", label: "Интерактивная доска" },
+                      { id: "quiz", label: "Совместный тест" }
+                    ].map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setActiveWorkspace(item.id as WorkspaceTab)}
+                        className={cn(
+                          "rounded-full px-4 py-2 text-sm font-semibold transition",
+                          activeWorkspace === item.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-white"
+                        )}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Экран разделен: преподаватель и рабочая зона видны одновременно. Можно скрывать лишние блоки и менять размеры.
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Экран разделен: преподаватель и рабочая зона видны одновременно. Можно скрывать лишние блоки и менять размеры.
-                </p>
-              </div>
+              ) : null}
 
-	              <div ref={splitContainerRef} className="mt-3 flex min-h-[660px] flex-col gap-3 lg:flex-row">
+	              <div
+                  ref={splitContainerRef}
+                  className={cn(
+                    "flex min-h-0 flex-1 flex-col gap-3 lg:flex-row",
+                    showWorkspaceToolbar ? "mt-3" : "mt-0",
+                    isVideoStandaloneMode ? "items-center justify-center" : "",
+                    isWorkspaceVisible && isVideoVisible ? "lg:gap-2" : ""
+                  )}
+                >
 	                {isWorkspaceVisible ? (
-	                  <section className="min-w-0" style={{ flexBasis: isVideoVisible ? `${workspaceWidthRatio}%` : "100%" }}>
+	                  <section
+                    className="flex min-h-0 min-w-0 w-full"
+                    style={isVideoVisible ? { flex: `0 1 ${workspaceWidthRatio}%` } : { flex: "1 1 auto" }}
+                  >
 	                  {activeWorkspace === "board" ? (
                     <article className="flex h-full flex-col rounded-[1.4rem] border border-border bg-slate-50/70 p-3">
                       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-white p-2">
@@ -1026,7 +1076,7 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
                         onPointerCancel={stopBoardInteraction}
                         onWheel={handleBoardWheel}
                         className={cn(
-                          "relative mt-3 min-h-[430px] flex-1 overflow-hidden rounded-2xl border border-border bg-white touch-none",
+                          "relative mt-3 min-h-[220px] flex-1 overflow-hidden rounded-2xl border border-border bg-white touch-none sm:min-h-[280px] lg:min-h-[320px]",
                           boardTool === "pan" ? "cursor-grab" : "cursor-crosshair"
                         )}
                       >
@@ -1209,7 +1259,7 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
 	                  <button
 	                    type="button"
 	                    onPointerDown={handleSplitResizeStart}
-	                    className="hidden w-3 items-center justify-center rounded-full border border-border bg-slate-50 text-muted-foreground lg:flex"
+	                    className="hidden w-2 items-center justify-center rounded-full border border-border bg-slate-50 text-muted-foreground lg:flex"
 	                    aria-label="Изменить ширину панелей"
 	                  >
 	                    <GripVertical className="h-4 w-4" />
@@ -1217,35 +1267,43 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
 	                ) : null}
 
 	                {isVideoVisible ? (
-	                  <section className="min-w-0" style={{ flexBasis: isWorkspaceVisible ? `${100 - workspaceWidthRatio}%` : "100%" }}>
-                  <article className="flex h-full flex-col rounded-[1.4rem] border border-slate-700 bg-slate-900 p-3 text-white shadow-soft">
-                    <div className="relative flex-1 overflow-hidden rounded-2xl border border-white/10">
-                      <Image
-                        src="/classroom-preview.svg"
-                        alt={`Видеопоток урока: ${lesson.subject}`}
-                        width={980}
-                        height={690}
-                        className="h-full w-full object-cover opacity-35"
-                      />
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.15),transparent_35%),linear-gradient(180deg,rgba(17,24,39,0.08),rgba(2,6,23,0.74))]" />
-
-                      <div className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-900">
-                        Ведёт: {lesson.teacherName}
-                      </div>
-                      <div className="absolute right-3 top-3 rounded-full bg-emerald-500/90 px-3 py-1 text-[11px] font-semibold">
-                        Онлайн
-                      </div>
-
-                      <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 flex-col items-center">
+	                  <section
+                    className={cn(
+                      "flex min-h-0 min-w-0 w-full",
+                      isVideoStandaloneMode ? "mx-auto h-full max-w-[980px] items-center justify-center" : ""
+                    )}
+                    style={isWorkspaceVisible ? { flex: `1 1 ${100 - workspaceWidthRatio}%` } : { flex: "1 1 auto" }}
+                  >
+                  <article className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[1.4rem] border border-slate-700 bg-slate-900 p-3 text-white shadow-soft">
+                    <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-2">
+                      <div className={videoStageClassName}>
                         <Image
-                          src={teacherAvatarUrl ?? "/avatars/avatar-2.svg"}
-                          alt={`Преподаватель ${lesson.teacherName}`}
-                          width={94}
-                          height={94}
-                          className="h-20 w-20 rounded-full border-4 border-white/70 bg-white/80"
+                          src="/classroom-preview.svg"
+                          alt={`Видеопоток урока: ${lesson.subject}`}
+                          width={980}
+                          height={690}
+                          className="h-full w-full object-cover opacity-35"
                         />
-                        <p className="mt-2 text-sm font-semibold text-white">{lesson.teacherName}</p>
-                        <p className="text-[11px] text-white/80">Разбор темы и ответы на вопросы</p>
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.15),transparent_35%),linear-gradient(180deg,rgba(17,24,39,0.08),rgba(2,6,23,0.74))]" />
+
+                        <div className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-900">
+                          Ведёт: {lesson.teacherName}
+                        </div>
+                        <div className="absolute right-3 top-3 rounded-full bg-emerald-500/90 px-3 py-1 text-[11px] font-semibold">
+                          Онлайн
+                        </div>
+
+                        <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 flex-col items-center">
+                          <Image
+                            src={teacherAvatarUrl ?? "/avatars/avatar-2.svg"}
+                            alt={`Преподаватель ${lesson.teacherName}`}
+                            width={94}
+                            height={94}
+                            className="h-20 w-20 rounded-full border-4 border-white/70 bg-white/80"
+                          />
+                          <p className="mt-2 text-sm font-semibold text-white">{lesson.teacherName}</p>
+                          <p className="text-[11px] text-white/80">Разбор темы и ответы на вопросы</p>
+                        </div>
                       </div>
                     </div>
 
@@ -1256,18 +1314,18 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
 	                        className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white/90 transition hover:bg-white/15"
 	                      >
 	                        <Rows3 className="h-3.5 w-3.5" />
-	                        {areParticipantTilesVisible ? "Скрыть участников" : "Показать участников"}
+	                        {areParticipantTilesVisible ? "Скрыть участников" : `Показать участников (${participantsCount})`}
 	                      </button>
 	                    </div>
 
 	                    {areParticipantTilesVisible ? (
-	                      <div className="mt-2 grid grid-cols-3 gap-2">
+	                      <div className={participantsGridClassName}>
 	                        {participants.slice(1).map((participant) => (
 	                          <article key={participant.id} className="relative overflow-hidden rounded-xl border border-white/10 bg-white/10 p-1.5">
 	                            <div className="absolute right-2 top-2 rounded-full bg-slate-900/70 px-2 py-0.5 text-[10px]">
 	                              {participant.muted ? "Без звука" : "Со звуком"}
 	                            </div>
-	                            <div className="flex h-16 items-center justify-center rounded-lg bg-white/10">
+	                            <div className="relative flex aspect-[4/3] items-center justify-center rounded-lg bg-white/10">
 	                              <Image
 	                                src={participant.avatarUrl}
 	                                alt={`Участник ${participant.name}`}
@@ -1276,7 +1334,8 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
 	                                className="h-12 w-12 rounded-full border border-white/60 bg-white/80"
 	                              />
 	                            </div>
-	                            <p className="mt-1 truncate px-1 text-[11px] font-semibold text-white">{participant.name}</p>
+	                            <p className="mt-1 truncate px-1 text-center text-[11px] font-semibold text-white">{participant.name}</p>
+                              <p className="truncate px-1 text-center text-[10px] text-white/70">{participant.role}</p>
 	                          </article>
 	                        ))}
 	                      </div>
@@ -1321,7 +1380,7 @@ export function LiveCallRoom({ lesson, backHref, teacherAvatarUrl, vocabulary = 
             </article>
 
             {isSupportPanelOpen ? (
-              <aside className="flex min-h-[660px] flex-col rounded-[1.8rem] border border-border bg-[#dde0e7] p-4">
+              <aside className="flex min-h-0 h-full flex-col overflow-hidden rounded-[1.8rem] border border-border bg-[#dde0e7] p-4">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex gap-1 rounded-full border border-border bg-white p-1">
                     <button
