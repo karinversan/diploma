@@ -17,7 +17,7 @@ const pageTitles: Array<{ match: string; title: string; subtitle: string }> = [
   { match: "/app/teachers", title: "Преподаватели", subtitle: "Найдите подходящего наставника и запишитесь на урок" },
   { match: "/app/messages", title: "Сообщения", subtitle: "Общение с преподавателями и поддержкой" },
   { match: "/app/analytics", title: "Аналитика", subtitle: "Смотрите динамику, ошибки и рекомендации по обучению" },
-  { match: "/app/payments", title: "Платежи", subtitle: "История оплат и доступные пакеты занятий" },
+  { match: "/app/payments", title: "Платежи", subtitle: "Карты, транзакции, статусы оплат и возвратов" },
   { match: "/app/settings", title: "Настройки", subtitle: "Профиль, уведомления и учебные предпочтения" }
 ];
 
