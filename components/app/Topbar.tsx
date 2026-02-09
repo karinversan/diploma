@@ -114,7 +114,14 @@ export function Topbar({ pathname, onOpenSidebar }: TopbarProps) {
               <Link href="/app/payments" className="block rounded-xl px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50">
                 Платежи
               </Link>
-              <Link href="/" className="block rounded-xl px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50">
+              <div className="my-1 h-px bg-border" />
+              <Link href="/teacher" className="block rounded-xl px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50">
+                Перейти в кабинет преподавателя
+              </Link>
+              <Link href="/admin" className="block rounded-xl px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50">
+                Перейти в кабинет администратора
+              </Link>
+              <Link href="/login?role=student" className="block rounded-xl px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50">
                 Выйти (демо)
               </Link>
             </div>

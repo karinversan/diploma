@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
 
 import { teachers } from "@/data/teachers";
+import { resolveRouteByRole, writeDemoRole } from "@/lib/demo-role";
 
 type SignupFormProps = {
   initialRole: "student" | "tutor";
@@ -42,7 +43,8 @@ export function SignupForm({ initialRole, selectedTeacher }: SignupFormProps) {
       setIsSubmitting(false);
       setIsSuccess(true);
       window.setTimeout(() => {
-        router.push("/app");
+        writeDemoRole(role === "tutor" ? "teacher" : "student");
+        router.push(resolveRouteByRole(role === "tutor" ? "teacher" : "student"));
       }, 700);
     }, 700);
   };
