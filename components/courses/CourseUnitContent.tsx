@@ -26,6 +26,7 @@ import {
 } from "@/data/homework";
 import { cn } from "@/lib/utils";
 
+import { LiveLessonBookingDialog } from "@/components/courses/LiveLessonBookingDialog";
 import { ProgressBar } from "@/components/shared/ProgressBar";
 
 type CourseUnitContentProps = {
@@ -333,18 +334,23 @@ export function CourseUnitContent({
             <p className="mt-1 text-sm text-muted-foreground">
               В комнате доступны чат, доска, тесты в реальном времени и артефакты урока.
             </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Выберите преподавателя и конкретное время прямо из этого модуля. После подтверждения слот появится в разделе
+              расписания.
+            </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Link
-                href={`/app/lessons?course=${encodeURIComponent(course.id)}`}
-                className="inline-flex rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
-              >
-                Открыть расписание созвонов
-              </Link>
+              <LiveLessonBookingDialog course={course} />
               <Link
                 href="/app/messages"
                 className="inline-flex rounded-full border border-border bg-white px-4 py-2 text-xs font-semibold text-foreground"
               >
                 Уточнить детали у преподавателя
+              </Link>
+              <Link
+                href={`/app/lessons?course=${encodeURIComponent(course.id)}`}
+                className="inline-flex rounded-full border border-border bg-white px-4 py-2 text-xs font-semibold text-foreground"
+              >
+                Открыть расписание
               </Link>
             </div>
           </section>
