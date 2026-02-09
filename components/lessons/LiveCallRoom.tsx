@@ -159,11 +159,13 @@ function formatTime(date = new Date()) {
 }
 
 function formatDateLabel(dateValue: string) {
-  return new Intl.DateTimeFormat("ru-RU", {
+  const label = new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",
     month: "long",
     weekday: "short"
   }).format(new Date(dateValue));
+
+  return label.replace(/^[A-Za-zА-Яа-яЁё]/, (first) => first.toLowerCase());
 }
 
 function formatLessonTime(dateValue: string) {

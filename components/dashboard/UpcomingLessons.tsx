@@ -8,14 +8,15 @@ import { PillBadge } from "@/components/shared/PillBadge";
 
 function formatDateLabel(dateValue: string) {
   const date = new Date(dateValue);
-
-  return new Intl.DateTimeFormat("ru-RU", {
+  const label = new Intl.DateTimeFormat("ru-RU", {
     weekday: "short",
     day: "2-digit",
     month: "long",
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
+
+  return label.replace(/^[A-Za-zА-Яа-яЁё]/, (first) => first.toLowerCase());
 }
 
 type UpcomingLessonsProps = {

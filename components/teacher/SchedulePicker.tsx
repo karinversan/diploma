@@ -19,12 +19,13 @@ const timezoneOptions = ["МСК UTC+03:00", "UTC+00:00", "UTC+05:00"];
 
 function formatDate(value: string) {
   const date = new Date(`${value}T12:00:00`);
-
-  return new Intl.DateTimeFormat("ru-RU", {
+  const label = new Intl.DateTimeFormat("ru-RU", {
     weekday: "short",
     day: "numeric",
     month: "short"
   }).format(date);
+
+  return label.replace(/^[A-Za-zА-Яа-яЁё]/, (first) => first.toLowerCase());
 }
 
 export function SchedulePicker({ scheduleSlots, selectedSlot, onSelectSlot }: SchedulePickerProps) {

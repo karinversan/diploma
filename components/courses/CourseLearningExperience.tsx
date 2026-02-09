@@ -60,21 +60,25 @@ type CourseSlot = {
 };
 
 function formatLessonDate(value: string) {
-  return new Intl.DateTimeFormat("ru-RU", {
+  const label = new Intl.DateTimeFormat("ru-RU", {
     weekday: "short",
     day: "2-digit",
     month: "long",
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+
+  return label.replace(/^[A-Za-zА-Яа-яЁё]/, (first) => first.toLowerCase());
 }
 
 function formatSlot(value: CourseSlot) {
-  return new Intl.DateTimeFormat("ru-RU", {
+  const label = new Intl.DateTimeFormat("ru-RU", {
     weekday: "short",
     day: "2-digit",
     month: "short"
   }).format(new Date(`${value.date}T12:00:00`));
+
+  return label.replace(/^[A-Za-zА-Яа-яЁё]/, (first) => first.toLowerCase());
 }
 
 function getKindIcon(kind: CourseLessonUnit["kind"]) {

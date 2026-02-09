@@ -6,13 +6,15 @@ import { isLessonStartingSoon, StudentLesson } from "@/data/lessons";
 import { PillBadge } from "@/components/shared/PillBadge";
 
 function formatDate(dateValue: string) {
-  return new Intl.DateTimeFormat("ru-RU", {
+  const label = new Intl.DateTimeFormat("ru-RU", {
     weekday: "short",
     day: "2-digit",
     month: "long",
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(dateValue));
+
+  return label.replace(/^[A-Za-zА-Яа-яЁё]/, (first) => first.toLowerCase());
 }
 
 const statusText: Record<StudentLesson["status"], { label: string; variant: "neutral" | "success" | "warning" }> = {
