@@ -12,6 +12,7 @@ import {
 } from "@/data/teacher-cabinet";
 import { type LessonBookingRequest, readLessonBookings } from "@/lib/lesson-bookings";
 import { readRefundTickets } from "@/lib/refund-tickets";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
 type PayoutFilter = "all" | TeacherPayoutStatus;
@@ -109,7 +110,11 @@ export default function TeacherPayoutsPage() {
     };
 
     window.addEventListener("storage", sync);
-    return () => window.removeEventListener("storage", sync);
+    window.addEventListener(STORAGE_SYNC_EVENT, sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener(STORAGE_SYNC_EVENT, sync);
+    };
   }, []);
 
   const teacherBookings = useMemo(

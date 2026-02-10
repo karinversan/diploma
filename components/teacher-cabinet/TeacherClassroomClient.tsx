@@ -38,6 +38,14 @@ type ClassroomTabId = (typeof classroomTabs)[number]["id"];
 type CalendarMode = "week" | "month";
 type RequestStatusFilter = "all" | "pending" | "reschedule_proposed" | "awaiting_payment" | "paid" | "declined";
 type RequestAction = "confirm" | "propose" | "decline";
+type RequestViewMode = "list" | "kanban";
+type MessageTone = "standard" | "friendly" | "strict";
+
+type TeacherClassroomClientProps = {
+  initialStatusFilter?: string;
+  initialViewMode?: string;
+  initialSearchQuery?: string;
+};
 
 const dayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const requestStatusFilterOptions: Array<{ value: RequestStatusFilter; label: string }> = [
@@ -47,6 +55,55 @@ const requestStatusFilterOptions: Array<{ value: RequestStatusFilter; label: str
   { value: "awaiting_payment", label: "Ожидают оплату" },
   { value: "paid", label: "Оплачено" },
   { value: "declined", label: "Отклоненные" }
+];
+
+const requestViewModeOptions: Array<{ value: RequestViewMode; label: string }> = [
+  { value: "list", label: "Лента" },
+  { value: "kanban", label: "Канбан" }
+];
+
+const messageToneOptions: Array<{ value: MessageTone; label: string }> = [
+  { value: "standard", label: "Шаблон: стандарт" },
+  { value: "friendly", label: "Шаблон: дружелюбно" },
+  { value: "strict", label: "Шаблон: формально" }
+];
+
+const queueColumnConfig: Array<{
+  status: Exclude<RequestStatusFilter, "all">;
+  label: string;
+  description: string;
+  className: string;
+}> = [
+  {
+    status: "pending",
+    label: "Новые заявки",
+    description: "Нужна проверка слота и ответ ученику.",
+    className: "border-amber-300/80 bg-amber-50"
+  },
+  {
+    status: "reschedule_proposed",
+    label: "Предложен перенос",
+    description: "Ждем подтверждения переноса от ученика.",
+    className: "border-primary/30 bg-primary/5"
+  },
+  {
+    status: "awaiting_payment",
+    label: "Ожидают оплату",
+    description: "Слот подтвержден, урок появится после оплаты.",
+    className: "border-emerald-300/80 bg-emerald-50"
+  },
+  {
+    status: "paid",
+    label: "Оплачено",
+    description: "Уроки уже зафиксированы в календаре.",
+    className: "border-emerald-300/80 bg-white"
+  },
+  {
+    status: "declined",
+    label: "Отклонено",
+    description: "Можно продолжить обсуждение в чате.",
+    className: "border-rose-300/80 bg-rose-50"
+  }
 ];
 
 function parseEventMinutes(value: string) {
@@ -146,18 +203,81 @@ function isActionableRequestStatus(status: LessonBookingRequest["status"]) {
   return status === "pending" || status === "reschedule_proposed";
 }
 
-export function TeacherClassroomClient() {
+function buildTeacherActionMessage({
+  action,
+  request,
+  tone,
+  proposedSlot
+}: {
+  action: RequestAction;
+  request: LessonBookingRequest;
+  tone: MessageTone;
+  proposedSlot?: string;
+}) {
+  const slotLabel = formatBookingSlotLabel(request.slot);
+  const proposedLabel = proposedSlot ? formatBookingSlotLabel(proposedSlot) : undefined;
+
+  if (action === "confirm") {
+    if (tone === "friendly") {
+      return `Отлично, подтверждаю слот ${slotLabel}. Как только пройдет оплата, урок сразу закрепится в расписании.`;
+    }
+    if (tone === "strict") {
+      return `Слот ${slotLabel} подтвержден. Для проведения занятия требуется оплата в разделе «Платежи».`;
+    }
+    return `Подтвердил(а) ваш слот ${slotLabel}. Следующий шаг: оплата в разделе «Платежи».`;
+  }
+
+  if (action === "propose") {
+    if (tone === "friendly") {
+      return proposedLabel
+        ? `Предлагаю удобный перенос на ${proposedLabel}. Подтвердите, и я сразу зафиксирую занятие.`
+        : "Предлагаю выбрать другое удобное время для переноса.";
+    }
+    if (tone === "strict") {
+      return proposedLabel
+        ? `Предлагаю перенос на ${proposedLabel}. Подтвердите перенос в разделе «Занятия».`
+        : "Предлагаю перенос. Подтвердите новый слот в разделе «Занятия».";
+    }
+    return proposedLabel
+      ? `Предлагаю перенести занятие на ${proposedLabel}. Подтвердите перенос в разделе «Занятия».`
+      : "Предлагаю перенос. Подтвердите новый слот в разделе «Занятия».";
+  }
+
+  if (tone === "friendly") {
+    return "К сожалению, выбранный слот уже недоступен. Давайте подберем другое удобное время.";
+  }
+  if (tone === "strict") {
+    return "Заявка отклонена из-за недоступности слота. Выберите другое время для записи.";
+  }
+  return "К сожалению, выбранный слот недоступен. Пожалуйста, выберите другое время.";
+}
+
+export function TeacherClassroomClient({
+  initialStatusFilter,
+  initialViewMode,
+  initialSearchQuery
+}: TeacherClassroomClientProps = {}) {
+  const resolvedInitialStatusFilter = requestStatusFilterOptions.some((option) => option.value === initialStatusFilter)
+    ? (initialStatusFilter as RequestStatusFilter)
+    : "all";
+  const resolvedInitialViewMode = requestViewModeOptions.some((option) => option.value === initialViewMode)
+    ? (initialViewMode as RequestViewMode)
+    : "list";
+
   const [activeTab, setActiveTab] = useState<ClassroomTabId>("calendar");
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("week");
   const [anchorDate, setAnchorDate] = useState(() => new Date("2026-04-09T08:00:00"));
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery ?? "");
   const [manualCalendarEvents, setManualCalendarEvents] = useState<ClassroomEvent[]>(teacherClassroomEvents);
   const [selectedEvent, setSelectedEvent] = useState<ClassroomEvent | null>(null);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [bookingRequests, setBookingRequests] = useState<LessonBookingRequest[]>([]);
   const [bookingEvents, setBookingEvents] = useState<BookingEvent[]>([]);
   const [teacherActionNote, setTeacherActionNote] = useState<string | null>(null);
-  const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>("all");
+  const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>(resolvedInitialStatusFilter);
+  const [requestViewMode, setRequestViewMode] = useState<RequestViewMode>(resolvedInitialViewMode);
+  const [messageTone, setMessageTone] = useState<MessageTone>("standard");
+  const [teacherMessageDraft, setTeacherMessageDraft] = useState("");
   const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
 
   const weekDays = useMemo(() => createWeekDays(anchorDate), [anchorDate]);
@@ -236,6 +356,15 @@ export function TeacherClassroomClient() {
         .includes(query);
     });
   }, [requestStatusFilter, requestsForTeacher, searchQuery]);
+
+  const queueColumns = useMemo(() => {
+    return queueColumnConfig
+      .filter((column) => requestStatusFilter === "all" || requestStatusFilter === column.status)
+      .map((column) => ({
+        ...column,
+        items: requestQueue.filter((request) => request.status === column.status)
+      }));
+  }, [requestQueue, requestStatusFilter]);
 
   const selectableQueueRequestIds = useMemo(() => {
     return requestQueue
@@ -394,10 +523,19 @@ export function TeacherClassroomClient() {
   const applyRequestAction = (
     request: LessonBookingRequest,
     action: RequestAction,
-    options?: { silentNote?: boolean; skipStateSync?: boolean }
+    options?: { silentNote?: boolean; skipStateSync?: boolean; tone?: MessageTone; customMessage?: string }
   ) => {
+    const tone = options?.tone ?? messageTone;
+    const customMessage = options?.customMessage?.trim();
+
     if (action === "confirm") {
-      const teacherMessage = "Слот подтвержден. Для фиксации в расписании ученик должен оплатить занятие.";
+      const teacherMessage =
+        customMessage ??
+        buildTeacherActionMessage({
+          action,
+          request,
+          tone
+        });
       const next = updateLessonBooking(request.id, {
         status: "awaiting_payment",
         teacherMessage,
@@ -416,10 +554,7 @@ export function TeacherClassroomClient() {
       if (!options?.skipStateSync) {
         setBookingEvents(readBookingEvents());
       }
-      notifyStudentByChat(
-        request,
-        `Подтвердил(а) ваш слот ${formatBookingSlotLabel(request.slot)}. Следующий шаг: оплата в разделе «Платежи».`
-      );
+      notifyStudentByChat(request, teacherMessage);
       if (!options?.silentNote) {
         setTeacherActionNote(
           `Заявка на ${formatBookingSlotLabel(request.slot)} подтверждена. Теперь ученик увидит кнопку оплаты в разделе «Занятия».`
@@ -434,11 +569,19 @@ export function TeacherClassroomClient() {
       const datePart = `${proposedDate.getFullYear()}-${String(proposedDate.getMonth() + 1).padStart(2, "0")}-${String(proposedDate.getDate()).padStart(2, "0")}`;
       const timePart = `${String(sourceDate.getHours()).padStart(2, "0")}:${String(sourceDate.getMinutes()).padStart(2, "0")}`;
       const proposedSlot = `${datePart} ${timePart}`;
+      const teacherMessage =
+        customMessage ??
+        buildTeacherActionMessage({
+          action,
+          request,
+          tone,
+          proposedSlot
+        });
 
       const next = updateLessonBooking(request.id, {
         status: "reschedule_proposed",
         proposedSlot,
-        teacherMessage: `Предлагаю перенос на ${formatBookingSlotLabel(proposedSlot)}.`
+        teacherMessage
       });
       if (!options?.skipStateSync) {
         setBookingRequests(next);
@@ -453,14 +596,20 @@ export function TeacherClassroomClient() {
       if (!options?.skipStateSync) {
         setBookingEvents(readBookingEvents());
       }
-      notifyStudentByChat(request, `Предлагаю перенести занятие на ${formatBookingSlotLabel(proposedSlot)}. Подтвердите перенос в разделе «Занятия».`);
+      notifyStudentByChat(request, teacherMessage);
       if (!options?.silentNote) {
         setTeacherActionNote(`По заявке отправлен перенос на ${formatBookingSlotLabel(proposedSlot)}.`);
       }
       return;
     }
 
-    const teacherMessage = "Слот уже недоступен. Выберите, пожалуйста, другой вариант времени.";
+    const teacherMessage =
+      customMessage ??
+      buildTeacherActionMessage({
+        action,
+        request,
+        tone
+      });
     const next = updateLessonBooking(request.id, {
       status: "declined",
       teacherMessage
@@ -478,15 +627,40 @@ export function TeacherClassroomClient() {
     if (!options?.skipStateSync) {
       setBookingEvents(readBookingEvents());
     }
-    notifyStudentByChat(request, "К сожалению, выбранный слот недоступен. Пожалуйста, выберите другое время.");
+    notifyStudentByChat(request, teacherMessage);
     if (!options?.silentNote) {
       setTeacherActionNote("Заявка отклонена с комментарием преподавателя.");
     }
   };
 
-  const confirmRequest = (request: LessonBookingRequest) => applyRequestAction(request, "confirm");
-  const proposeNewTime = (request: LessonBookingRequest) => applyRequestAction(request, "propose");
-  const declineRequest = (request: LessonBookingRequest) => applyRequestAction(request, "decline");
+  const consumeCustomMessage = () => {
+    const normalized = teacherMessageDraft.trim();
+    return normalized.length > 0 ? normalized : undefined;
+  };
+
+  const confirmRequest = (request: LessonBookingRequest) => {
+    const customMessage = consumeCustomMessage();
+    applyRequestAction(request, "confirm", { tone: messageTone, customMessage });
+    if (customMessage) {
+      setTeacherMessageDraft("");
+    }
+  };
+
+  const proposeNewTime = (request: LessonBookingRequest) => {
+    const customMessage = consumeCustomMessage();
+    applyRequestAction(request, "propose", { tone: messageTone, customMessage });
+    if (customMessage) {
+      setTeacherMessageDraft("");
+    }
+  };
+
+  const declineRequest = (request: LessonBookingRequest) => {
+    const customMessage = consumeCustomMessage();
+    applyRequestAction(request, "decline", { tone: messageTone, customMessage });
+    if (customMessage) {
+      setTeacherMessageDraft("");
+    }
+  };
 
   const toggleRequestSelection = (requestId: string) => {
     setSelectedRequestIds((prev) => (prev.includes(requestId) ? prev.filter((id) => id !== requestId) : [...prev, requestId]));
@@ -504,18 +678,27 @@ export function TeacherClassroomClient() {
   const runBulkAction = (action: RequestAction) => {
     const selectedRequests = requestQueue.filter((request) => selectedRequestIds.includes(request.id));
     const actionableRequests = selectedRequests.filter((request) => isActionableRequestStatus(request.status));
+    const customMessage = consumeCustomMessage();
 
     if (actionableRequests.length === 0) {
       return;
     }
 
     for (const request of actionableRequests) {
-      applyRequestAction(request, action, { silentNote: true, skipStateSync: true });
+      applyRequestAction(request, action, {
+        silentNote: true,
+        skipStateSync: true,
+        tone: messageTone,
+        customMessage
+      });
     }
 
     setBookingRequests(readLessonBookings());
     setBookingEvents(readBookingEvents());
     setSelectedRequestIds((prev) => prev.filter((id) => !actionableRequests.some((request) => request.id === id)));
+    if (customMessage) {
+      setTeacherMessageDraft("");
+    }
 
     if (action === "confirm") {
       setTeacherActionNote(`Массовое действие: подтверждено ${actionableRequests.length} заявок.`);
@@ -605,6 +788,121 @@ export function TeacherClassroomClient() {
 
     setIsEventModalOpen(false);
     setSelectedEvent(null);
+  };
+
+  const renderRequestCard = (request: LessonBookingRequest, layout: "list" | "kanban" = "list") => {
+    const statusMeta = getRequestStatusMeta(request.status);
+    const actionable = isActionableRequestStatus(request.status);
+    const isSelected = selectedRequestIds.includes(request.id);
+    const history = bookingEventsByRequest.get(request.id) ?? [];
+
+    return (
+      <article
+        key={request.id}
+        className={cn(
+          "rounded-xl border p-3",
+          request.status === "paid"
+            ? "border-emerald-200 bg-emerald-50"
+            : request.status === "declined"
+              ? "border-rose-200 bg-rose-50"
+              : "border-primary/20 bg-white",
+          layout === "kanban" ? "h-full" : ""
+        )}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-foreground">
+            {request.subject} · {request.studentName ?? "Ученик"}
+          </p>
+          <div className="flex items-center gap-2">
+            {actionable ? (
+              <label className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-2 py-0.5 text-xs font-semibold text-foreground">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleRequestSelection(request.id)}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                В очередь
+              </label>
+            ) : null}
+            <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", statusMeta.className)}>{statusMeta.label}</span>
+          </div>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Текущий слот: {formatBookingSlotLabel(request.slot)}
+          {request.proposedSlot ? ` · Предложен: ${formatBookingSlotLabel(request.proposedSlot)}` : ""}
+        </p>
+        {request.studentMessage ? <p className="mt-1 text-xs text-muted-foreground">Сообщение ученика: {request.studentMessage}</p> : null}
+
+        {layout === "list" && history.length > 0 ? (
+          <details className="mt-2 rounded-xl border border-border bg-slate-50 p-2">
+            <summary className="cursor-pointer text-xs font-semibold text-foreground">История действий</summary>
+            <div className="mt-2 space-y-2">
+              {history.map((event) => (
+                <div key={event.id} className="rounded-lg border border-border bg-white px-2.5 py-2">
+                  <p className="text-xs font-semibold text-foreground">{event.title}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{event.description}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {formatEventLogDate(event.createdAt)} · {event.actor}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </details>
+        ) : null}
+
+        {request.status === "awaiting_payment" ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <p className="text-xs text-emerald-700">Слот подтвержден. Ожидаем оплату от ученика.</p>
+            <Link
+              href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(request))}`}
+              className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+            >
+              Открыть чат
+            </Link>
+          </div>
+        ) : actionable ? (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => confirmRequest(request)}
+              className="inline-flex rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+            >
+              Подтвердить
+            </button>
+            <button
+              type="button"
+              onClick={() => proposeNewTime(request)}
+              className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+            >
+              Предложить другое время
+            </button>
+            <button
+              type="button"
+              onClick={() => declineRequest(request)}
+              className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
+            >
+              Отклонить
+            </button>
+            <Link
+              href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(request))}`}
+              className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+            >
+              Открыть чат
+            </Link>
+          </div>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Link
+              href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(request))}`}
+              className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+            >
+              Написать ученику
+            </Link>
+          </div>
+        )}
+      </article>
+    );
   };
 
   return (
@@ -749,6 +1047,41 @@ export function TeacherClassroomClient() {
                   </option>
                 ))}
               </select>
+              <select
+                value={requestViewMode}
+                onChange={(event) => setRequestViewMode(event.target.value as RequestViewMode)}
+                className="rounded-xl border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground outline-none focus:border-primary"
+                aria-label="Режим отображения очереди"
+              >
+                {requestViewModeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={messageTone}
+                onChange={(event) => setMessageTone(event.target.value as MessageTone)}
+                className="rounded-xl border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground outline-none focus:border-primary"
+                aria-label="Шаблон сообщений ученику"
+              >
+                {messageToneOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+
+              <label className="min-w-[220px] flex-1">
+                <span className="sr-only">Дополнительный комментарий к действию</span>
+                <input
+                  type="text"
+                  value={teacherMessageDraft}
+                  onChange={(event) => setTeacherMessageDraft(event.target.value)}
+                  placeholder="Доп. комментарий ученику (необязательно)"
+                  className="w-full rounded-xl border border-border bg-white px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary"
+                />
+              </label>
 
               <button
                 type="button"
@@ -789,127 +1122,39 @@ export function TeacherClassroomClient() {
               <p className="mt-3 rounded-xl border border-dashed border-primary/30 bg-white/80 px-3 py-2 text-sm text-muted-foreground">
                 По текущим фильтрам заявок нет. Измените статусный фильтр или строку поиска.
               </p>
-            ) : (
+            ) : requestViewMode === "list" ? (
               <div className="mt-3 space-y-2">
-                {requestQueue.slice(0, 8).map((request) => {
-                  const statusMeta = getRequestStatusMeta(request.status);
-                  const actionable = isActionableRequestStatus(request.status);
-                  const isSelected = selectedRequestIds.includes(request.id);
-
-                  return (
-                  <article
-                    key={request.id}
-                    className={cn(
-                      "rounded-xl border p-3",
-                      request.status === "paid"
-                        ? "border-emerald-200 bg-emerald-50"
-                        : request.status === "declined"
-                          ? "border-rose-200 bg-rose-50"
-                          : "border-primary/20 bg-white"
-                    )}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-foreground">
-                        {request.subject} · {request.studentName ?? "Ученик"}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        {actionable ? (
-                          <label className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-2 py-0.5 text-xs font-semibold text-foreground">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleRequestSelection(request.id)}
-                              className="h-3.5 w-3.5 accent-primary"
-                            />
-                            В очередь
-                          </label>
-                        ) : null}
-                        <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", statusMeta.className)}>
-                          {statusMeta.label}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Текущий слот: {formatBookingSlotLabel(request.slot)}
-                      {request.proposedSlot ? ` · Предложен: ${formatBookingSlotLabel(request.proposedSlot)}` : ""}
-                    </p>
-                    {request.studentMessage ? (
-                      <p className="mt-1 text-xs text-muted-foreground">Сообщение ученика: {request.studentMessage}</p>
-                    ) : null}
-                    {(bookingEventsByRequest.get(request.id) ?? []).length > 0 ? (
-                      <details className="mt-2 rounded-xl border border-border bg-slate-50 p-2">
-                        <summary className="cursor-pointer text-xs font-semibold text-foreground">История действий</summary>
-                        <div className="mt-2 space-y-2">
-                          {(bookingEventsByRequest.get(request.id) ?? []).map((event) => (
-                            <div key={event.id} className="rounded-lg border border-border bg-white px-2.5 py-2">
-                              <p className="text-xs font-semibold text-foreground">{event.title}</p>
-                              <p className="mt-0.5 text-[11px] text-muted-foreground">{event.description}</p>
-                              <p className="mt-1 text-[11px] text-muted-foreground">
-                                {formatEventLogDate(event.createdAt)} · {event.actor}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    ) : null}
-                    {request.status === "awaiting_payment" ? (
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <p className="text-xs text-emerald-700">Слот подтвержден. Ожидаем оплату от ученика.</p>
-                        <Link
-                          href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(request))}`}
-                          className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
-                        >
-                          Открыть чат
-                        </Link>
-                      </div>
-                    ) : actionable ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => confirmRequest(request)}
-                          className="inline-flex rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
-                        >
-                          Подтвердить
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => proposeNewTime(request)}
-                          className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
-                        >
-                          Предложить другое время
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => declineRequest(request)}
-                          className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
-                        >
-                          Отклонить
-                        </button>
-                        <Link
-                          href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(request))}`}
-                          className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
-                        >
-                          Открыть чат
-                        </Link>
-                      </div>
-                    ) : (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Link
-                          href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(request))}`}
-                          className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
-                        >
-                          Написать ученику
-                        </Link>
-                      </div>
-                    )}
-                  </article>
-                )})}
+                {requestQueue.slice(0, 8).map((request) => renderRequestCard(request, "list"))}
 
                 {requestQueue.length > 8 ? (
                   <p className="rounded-xl border border-dashed border-border bg-white px-3 py-2 text-xs text-muted-foreground">
                     Показаны первые 8 заявок. Уточните фильтр или поиск для точечной обработки.
                   </p>
                 ) : null}
+              </div>
+            ) : (
+              <div className="mt-3 grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+                {queueColumns.map((column) => (
+                  <section key={column.status} className={cn("rounded-xl border p-3", column.className)}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground">{column.label}</h3>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">{column.description}</p>
+                      </div>
+                      <span className="rounded-full border border-border bg-white px-2 py-0.5 text-xs font-semibold text-foreground">
+                        {column.items.length}
+                      </span>
+                    </div>
+
+                    {column.items.length === 0 ? (
+                      <p className="mt-2 rounded-lg border border-dashed border-border/70 bg-white/80 px-2 py-1.5 text-[11px] text-muted-foreground">
+                        Нет заявок в этой колонке.
+                      </p>
+                    ) : (
+                      <div className="mt-2 space-y-2">{column.items.map((request) => renderRequestCard(request, "kanban"))}</div>
+                    )}
+                  </section>
+                ))}
               </div>
             )}
           </div>

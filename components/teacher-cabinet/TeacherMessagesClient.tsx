@@ -11,6 +11,7 @@ import {
   readSharedChatThreads,
   sendMessageToSharedChatThread
 } from "@/lib/chat-threads";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
 const monthShortNames = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
@@ -38,7 +39,11 @@ export function TeacherMessagesClient({ preselectedThreadId, preselectedStudentI
     setThreads(readSharedChatThreads());
     const syncThreads = () => setThreads(readSharedChatThreads());
     window.addEventListener("storage", syncThreads);
-    return () => window.removeEventListener("storage", syncThreads);
+    window.addEventListener(STORAGE_SYNC_EVENT, syncThreads);
+    return () => {
+      window.removeEventListener("storage", syncThreads);
+      window.removeEventListener(STORAGE_SYNC_EVENT, syncThreads);
+    };
   }, []);
 
   const personalThreads = useMemo(() => {

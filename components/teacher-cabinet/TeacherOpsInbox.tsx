@@ -70,21 +70,33 @@ export function TeacherOpsInbox() {
           <h3 className="text-lg font-semibold text-foreground">Операционная очередь</h3>
           <p className="mt-1 text-sm text-muted-foreground">Подтверждайте заявки и переносы до начала ближайших уроков.</p>
         </div>
-        <Link href="/teacher/classroom" className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">
+        <Link
+          href="/teacher/classroom?status=pending&view=kanban"
+          className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+        >
           Открыть очередь
         </Link>
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <div className="rounded-xl border border-border bg-white px-3 py-2 text-xs text-muted-foreground">
+        <Link
+          href="/teacher/classroom?status=pending&view=kanban"
+          className="rounded-xl border border-border bg-white px-3 py-2 text-xs text-muted-foreground transition hover:border-primary/40 hover:bg-primary/5"
+        >
           Новые: <span className="font-semibold text-foreground">{pendingCount}</span>
-        </div>
-        <div className="rounded-xl border border-border bg-white px-3 py-2 text-xs text-muted-foreground">
+        </Link>
+        <Link
+          href="/teacher/classroom?status=reschedule_proposed&view=kanban"
+          className="rounded-xl border border-border bg-white px-3 py-2 text-xs text-muted-foreground transition hover:border-primary/40 hover:bg-primary/5"
+        >
           Переносы: <span className="font-semibold text-foreground">{rescheduleCount}</span>
-        </div>
-        <div className="rounded-xl border border-border bg-white px-3 py-2 text-xs text-muted-foreground">
+        </Link>
+        <Link
+          href="/teacher/classroom?status=awaiting_payment&view=kanban"
+          className="rounded-xl border border-border bg-white px-3 py-2 text-xs text-muted-foreground transition hover:border-primary/40 hover:bg-primary/5"
+        >
           Ждут оплату: <span className="font-semibold text-foreground">{awaitingPaymentCount}</span>
-        </div>
+        </Link>
       </div>
 
       {queuePreview.length === 0 ? (
