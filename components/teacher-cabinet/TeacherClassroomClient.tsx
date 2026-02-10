@@ -289,6 +289,8 @@ export function TeacherClassroomClient({
   const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
   const [pendingBulkAction, setPendingBulkAction] = useState<RequestAction | null>(null);
   const [isBulkConfirmOpen, setIsBulkConfirmOpen] = useState(false);
+  const [focusedRequestId, setFocusedRequestId] = useState<string | null>(null);
+  const [isRequestDrawerOpen, setIsRequestDrawerOpen] = useState(false);
 
   const weekDays = useMemo(() => createWeekDays(anchorDate), [anchorDate]);
 
@@ -497,6 +499,27 @@ export function TeacherClassroomClient({
 
     return map;
   }, [bookingEvents]);
+
+  const focusedRequest = useMemo(
+    () => (focusedRequestId ? requestsForTeacher.find((request) => request.id === focusedRequestId) : undefined),
+    [focusedRequestId, requestsForTeacher]
+  );
+
+  const focusedRequestHistory = useMemo(
+    () => (focusedRequest ? bookingEventsByRequest.get(focusedRequest.id) ?? [] : []),
+    [bookingEventsByRequest, focusedRequest]
+  );
+
+  useEffect(() => {
+    if (!isRequestDrawerOpen || !focusedRequestId) {
+      return;
+    }
+
+    if (!requestsForTeacher.some((request) => request.id === focusedRequestId)) {
+      setIsRequestDrawerOpen(false);
+      setFocusedRequestId(null);
+    }
+  }, [focusedRequestId, isRequestDrawerOpen, requestsForTeacher]);
 
   const formatEventLogDate = (value: string) => {
     const date = new Date(value);
@@ -925,6 +948,11 @@ export function TeacherClassroomClient({
     setSelectedEvent(null);
   };
 
+  const openRequestDrawer = (request: LessonBookingRequest) => {
+    setFocusedRequestId(request.id);
+    setIsRequestDrawerOpen(true);
+  };
+
   const renderRequestCard = (request: LessonBookingRequest, layout: "list" | "kanban" = "list") => {
     const statusMeta = getRequestStatusMeta(request.status);
     const actionable = isActionableRequestStatus(request.status);
@@ -949,6 +977,13 @@ export function TeacherClassroomClient({
             {request.subject} · {request.studentName ?? "Ученик"}
           </p>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => openRequestDrawer(request)}
+              className="inline-flex rounded-full border border-border bg-white px-2.5 py-0.5 text-xs font-semibold text-foreground"
+            >
+              Детали
+            </button>
             {actionable ? (
               <label className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-2 py-0.5 text-xs font-semibold text-foreground">
                 <input
@@ -1041,6 +1076,7 @@ export function TeacherClassroomClient({
   };
 
   const bulkActionUi = pendingBulkAction ? getBulkActionUi(pendingBulkAction) : null;
+  const focusedRequestStatusMeta = focusedRequest ? getRequestStatusMeta(focusedRequest.status) : null;
 
   return (
     <div className="space-y-6">
@@ -1435,6 +1471,163 @@ export function TeacherClassroomClient({
           )}
         </section>
       ) : null}
+
+      <Dialog.Root
+        open={isRequestDrawerOpen}
+        onOpenChange={(nextOpen) => {
+          setIsRequestDrawerOpen(nextOpen);
+          if (!nextOpen) {
+            setFocusedRequestId(null);
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[81] bg-slate-950/55" />
+          <Dialog.Content className="fixed inset-y-0 right-0 z-[82] w-full max-w-[540px] overflow-y-auto border-l border-border bg-white p-5 shadow-soft sm:p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <Dialog.Title className="text-lg font-semibold text-foreground">Карточка заявки</Dialog.Title>
+                <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+                  Полная история заявки и быстрые действия без перехода по страницам.
+                </Dialog.Description>
+              </div>
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-muted-foreground"
+                  aria-label="Закрыть карточку заявки"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </Dialog.Close>
+            </div>
+
+            {focusedRequest ? (
+              <div className="mt-4 space-y-3">
+                <article className="rounded-2xl border border-border bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">{focusedRequest.subject}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Ученик: {focusedRequest.studentName ?? "Ученик"}</p>
+                    </div>
+                    {focusedRequestStatusMeta ? (
+                      <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", focusedRequestStatusMeta.className)}>
+                        {focusedRequestStatusMeta.label}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                    <p>Текущий слот: {formatBookingSlotLabel(focusedRequest.slot)}</p>
+                    <p>Длительность: {focusedRequest.durationMinutes} мин</p>
+                    <p>Источник: {focusedRequest.source ?? "кабинет ученика"}</p>
+                    <p>
+                      Обновлено: {formatEventLogDate(focusedRequest.updatedAt)}
+                    </p>
+                  </div>
+
+                  {focusedRequest.proposedSlot ? (
+                    <p className="mt-2 rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2 text-xs text-primary">
+                      Предложенный слот: {formatBookingSlotLabel(focusedRequest.proposedSlot)}
+                    </p>
+                  ) : null}
+                </article>
+
+                {focusedRequest.studentMessage ? (
+                  <article className="rounded-2xl border border-border bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Сообщение ученика</p>
+                    <p className="mt-1 text-sm text-foreground">{focusedRequest.studentMessage}</p>
+                  </article>
+                ) : null}
+
+                {focusedRequest.teacherMessage ? (
+                  <article className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">Текущий комментарий преподавателя</p>
+                    <p className="mt-1 text-sm text-foreground">{focusedRequest.teacherMessage}</p>
+                  </article>
+                ) : null}
+
+                <article className="rounded-2xl border border-border bg-white p-4">
+                  <p className="text-sm font-semibold text-foreground">Действия преподавателя</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {isActionableRequestStatus(focusedRequest.status) ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => confirmRequest(focusedRequest)}
+                          className="inline-flex rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+                        >
+                          Подтвердить слот
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => proposeNewTime(focusedRequest)}
+                          className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+                        >
+                          Предложить перенос
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => declineRequest(focusedRequest)}
+                          className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
+                        >
+                          Отклонить
+                        </button>
+                      </>
+                    ) : focusedRequest.status === "awaiting_payment" ? (
+                      <p className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                        Слот подтвержден. Ждем оплату ученика, после оплаты занятие появится в расписании.
+                      </p>
+                    ) : focusedRequest.status === "paid" ? (
+                      <p className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                        Заявка оплачена и зафиксирована в календаре.
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => proposeNewTime(focusedRequest)}
+                        className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+                      >
+                        Предложить новый слот
+                      </button>
+                    )}
+
+                    <Link
+                      href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(focusedRequest))}`}
+                      className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+                    >
+                      Открыть чат с учеником
+                    </Link>
+                  </div>
+                </article>
+
+                <article className="rounded-2xl border border-border bg-white p-4">
+                  <p className="text-sm font-semibold text-foreground">История заявки</p>
+                  {focusedRequestHistory.length > 0 ? (
+                    <ol className="mt-3 space-y-2">
+                      {focusedRequestHistory.map((event) => (
+                        <li key={event.id} className="rounded-xl border border-border bg-slate-50 px-3 py-2">
+                          <p className="text-xs font-semibold text-foreground">{event.title}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{event.description}</p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {formatEventLogDate(event.createdAt)} · {event.actor}
+                          </p>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="mt-2 text-xs text-muted-foreground">История пока пуста. События появятся после действий с заявкой.</p>
+                  )}
+                </article>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-dashed border-border bg-slate-50 p-4 text-sm text-muted-foreground">
+                Выберите заявку в очереди, чтобы открыть подробную карточку.
+              </div>
+            )}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <Dialog.Root
         open={isBulkConfirmOpen}
