@@ -10,6 +10,7 @@ type CreateRefundTicketPayload = {
   amountRubles: number;
   reason: string;
 };
+export type { CreateRefundTicketPayload };
 
 function canUseStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";

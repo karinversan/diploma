@@ -19,6 +19,8 @@ export type TutorApplication = {
   updatedAt: string;
 };
 
+export type CreateTutorApplicationPayload = Omit<TutorApplication, "id" | "status" | "createdAt" | "updatedAt" | "adminNote">;
+
 function canUseStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
@@ -108,7 +110,7 @@ export function ensureTutorApplicationsSeed(seed: TutorApplication[]) {
 }
 
 export function createTutorApplication(
-  payload: Omit<TutorApplication, "id" | "status" | "createdAt" | "updatedAt" | "adminNote">,
+  payload: CreateTutorApplicationPayload,
   options?: { deduplicateByEmail?: boolean }
 ) {
   const now = new Date().toISOString();

@@ -42,6 +42,7 @@ type EnsureThreadPayload = {
   subject?: string;
   courseTitle?: string;
 };
+export type { EnsureThreadPayload };
 
 type SendMessagePayload = EnsureThreadPayload & {
   sender: SharedChatSender;
@@ -49,6 +50,7 @@ type SendMessagePayload = EnsureThreadPayload & {
   threadId?: string;
   sentAt?: string;
 };
+export type { SendMessagePayload };
 
 type UpsertThreadResult = {
   threads: SharedChatThread[];
@@ -236,6 +238,10 @@ function mergeSeedThreads(threads: SharedChatThread[]) {
 
 function createSeedThreads() {
   return mergeSeedThreads([...seedFromStudentThreads(), ...seedFromTeacherThreads()]);
+}
+
+export function createSeedSharedChatThreads() {
+  return createSeedThreads();
 }
 
 function createThread(payload: EnsureThreadPayload): SharedChatThread {
