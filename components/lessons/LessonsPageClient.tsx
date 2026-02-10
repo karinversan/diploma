@@ -26,7 +26,7 @@ import {
   updateBookingViaApi,
   upsertBookingViaApi
 } from "@/lib/api/bookings-client";
-import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
+import { sendMessageToSharedChatThreadViaApi } from "@/lib/api/chat-threads-client";
 import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
@@ -373,7 +373,7 @@ export function LessonsPageClient({
           description: `Слот ${formatBookingSlotLabel(candidateBooking.slot)} отправлен преподавателю.`
         });
 
-        sendMessageToSharedChatThread({
+        await sendMessageToSharedChatThreadViaApi({
           teacherId: candidateBooking.teacherId,
           teacherName: candidateBooking.teacherName,
           teacherAvatarUrl: teacher?.avatarUrl,

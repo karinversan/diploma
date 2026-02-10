@@ -4,6 +4,7 @@ import { Filter, Plus, Search, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { type RefundTicket } from "@/data/admin";
+import { syncRefundTicketsFromApi } from "@/lib/api/refunds-client";
 import {
   teacherCabinetProfile,
   teacherPayoutTransactions,
@@ -101,8 +102,16 @@ export default function TeacherPayoutsPage() {
   const [refundTickets, setRefundTickets] = useState<RefundTicket[]>([]);
 
   useEffect(() => {
+    let mounted = true;
     setLessonBookings(readLessonBookings());
     setRefundTickets(readRefundTickets());
+
+    void (async () => {
+      const synced = await syncRefundTicketsFromApi();
+      if (mounted) {
+        setRefundTickets(synced);
+      }
+    })();
 
     const sync = () => {
       setLessonBookings(readLessonBookings());
@@ -112,6 +121,7 @@ export default function TeacherPayoutsPage() {
     window.addEventListener("storage", sync);
     window.addEventListener(STORAGE_SYNC_EVENT, sync);
     return () => {
+      mounted = false;
       window.removeEventListener("storage", sync);
       window.removeEventListener(STORAGE_SYNC_EVENT, sync);
     };

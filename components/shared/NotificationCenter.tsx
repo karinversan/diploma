@@ -12,6 +12,9 @@ import {
   readNotificationsForRole,
   readSeenNotificationIds
 } from "@/lib/notifications";
+import { syncAdminIncidentsFromApi } from "@/lib/api/admin-incidents-client";
+import { syncChatThreadsFromApi } from "@/lib/api/chat-threads-client";
+import { syncTutorApplicationsFromApi } from "@/lib/api/tutor-applications-client";
 import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
@@ -54,15 +57,29 @@ export function NotificationCenter({ role }: NotificationCenterProps) {
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
     const sync = () => {
       setNotifications(readNotificationsForRole(role));
       setSeenNotificationIds(readSeenNotificationIds(role));
     };
 
     sync();
+    void (async () => {
+      await syncChatThreadsFromApi();
+      if (role === "admin") {
+        await syncTutorApplicationsFromApi();
+        await syncAdminIncidentsFromApi();
+      }
+      if (mounted) {
+        sync();
+      }
+    })();
+
     window.addEventListener("storage", sync);
     window.addEventListener(STORAGE_SYNC_EVENT, sync);
     return () => {
+      mounted = false;
       window.removeEventListener("storage", sync);
       window.removeEventListener(STORAGE_SYNC_EVENT, sync);
     };

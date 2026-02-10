@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { type LessonIncident } from "@/data/admin";
-import { readAdminLessonIncidents, updateAdminLessonIncident } from "@/lib/admin-incidents";
+import { readAdminLessonIncidents } from "@/lib/admin-incidents";
+import { syncAdminIncidentsFromApi, updateAdminIncidentViaApi } from "@/lib/api/admin-incidents-client";
 import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
@@ -19,13 +20,22 @@ export default function AdminLessonsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | LessonIncident["status"]>("all");
 
   useEffect(() => {
+    let mounted = true;
     const syncIncidents = () => setIncidents(readAdminLessonIncidents());
 
     syncIncidents();
+    void (async () => {
+      const synced = await syncAdminIncidentsFromApi();
+      if (mounted) {
+        setIncidents(synced);
+      }
+    })();
+
     window.addEventListener("storage", syncIncidents);
     window.addEventListener(STORAGE_SYNC_EVENT, syncIncidents);
 
     return () => {
+      mounted = false;
       window.removeEventListener("storage", syncIncidents);
       window.removeEventListener(STORAGE_SYNC_EVENT, syncIncidents);
     };
@@ -39,8 +49,9 @@ export default function AdminLessonsPage() {
     });
   }, [incidents, severityFilter, statusFilter]);
 
-  const updateIncident = (incidentId: string, status: LessonIncident["status"]) => {
-    setIncidents(updateAdminLessonIncident(incidentId, { status }));
+  const updateIncident = async (incidentId: string, status: LessonIncident["status"]) => {
+    const next = await updateAdminIncidentViaApi(incidentId, { status });
+    setIncidents(next);
   };
 
   const openCount = incidents.filter((item) => item.status !== "resolved").length;
@@ -128,7 +139,7 @@ export default function AdminLessonsPage() {
                 {incident.status !== "in_progress" ? (
                   <button
                     type="button"
-                    onClick={() => updateIncident(incident.id, "in_progress")}
+                    onClick={() => void updateIncident(incident.id, "in_progress")}
                     className="rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
                   >
                     Взять в работу
@@ -138,7 +149,7 @@ export default function AdminLessonsPage() {
                 {incident.status !== "resolved" ? (
                   <button
                     type="button"
-                    onClick={() => updateIncident(incident.id, "resolved")}
+                    onClick={() => void updateIncident(incident.id, "resolved")}
                     className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
                   >
                     Отметить как решенный

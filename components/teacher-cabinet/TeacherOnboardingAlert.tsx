@@ -5,7 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock3, RefreshCcw, XCircle } from "lucide-react";
 
+import { syncTutorApplicationsFromApi } from "@/lib/api/tutor-applications-client";
 import { readTutorApplications, TutorApplication } from "@/lib/tutor-applications";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
 function formatDate(value: string) {
@@ -19,11 +21,24 @@ export function TeacherOnboardingAlert() {
   const [applications, setApplications] = useState<TutorApplication[]>([]);
 
   useEffect(() => {
+    let mounted = true;
     setApplications(readTutorApplications());
 
     const syncApplications = () => setApplications(readTutorApplications());
+    void (async () => {
+      const next = await syncTutorApplicationsFromApi();
+      if (mounted) {
+        setApplications(next);
+      }
+    })();
+
     window.addEventListener("storage", syncApplications);
-    return () => window.removeEventListener("storage", syncApplications);
+    window.addEventListener(STORAGE_SYNC_EVENT, syncApplications);
+    return () => {
+      mounted = false;
+      window.removeEventListener("storage", syncApplications);
+      window.removeEventListener(STORAGE_SYNC_EVENT, syncApplications);
+    };
   }, []);
 
   const latestApplication = useMemo(() => applications[0], [applications]);
@@ -91,7 +106,12 @@ export function TeacherOnboardingAlert() {
 
           <button
             type="button"
-            onClick={() => setApplications(readTutorApplications())}
+            onClick={() => {
+              void (async () => {
+                const next = await syncTutorApplicationsFromApi();
+                setApplications(next);
+              })();
+            }}
             className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
           >
             <RefreshCcw className="h-3.5 w-3.5" />

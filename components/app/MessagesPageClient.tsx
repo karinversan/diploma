@@ -7,10 +7,14 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { studentProfile } from "@/data/student";
 import {
   SharedChatThread,
-  markSharedChatThreadRead,
-  readSharedChatThreads,
-  sendMessageToSharedChatThread
+  readSharedChatThreads
 } from "@/lib/chat-threads";
+import {
+  markSharedChatThreadReadViaApi,
+  sendMessageToSharedChatThreadViaApi,
+  syncChatThreadsFromApi
+} from "@/lib/api/chat-threads-client";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
 type MessagesPageClientProps = {
@@ -31,10 +35,24 @@ export function MessagesPageClient({ preselectedThreadId, preselectedTeacherId, 
   const [composerText, setComposerText] = useState(initialDraft ?? "");
 
   useEffect(() => {
+    let mounted = true;
     setThreads(readSharedChatThreads());
+
+    void (async () => {
+      const synced = await syncChatThreadsFromApi();
+      if (mounted) {
+        setThreads(synced);
+      }
+    })();
+
     const syncThreads = () => setThreads(readSharedChatThreads());
     window.addEventListener("storage", syncThreads);
-    return () => window.removeEventListener("storage", syncThreads);
+    window.addEventListener(STORAGE_SYNC_EVENT, syncThreads);
+    return () => {
+      mounted = false;
+      window.removeEventListener("storage", syncThreads);
+      window.removeEventListener(STORAGE_SYNC_EVENT, syncThreads);
+    };
   }, []);
 
   useEffect(() => {
@@ -83,7 +101,10 @@ export function MessagesPageClient({ preselectedThreadId, preselectedTeacherId, 
     if (!activeThreadId) {
       return;
     }
-    setThreads(markSharedChatThreadRead(activeThreadId, "student"));
+    void (async () => {
+      const next = await markSharedChatThreadReadViaApi(activeThreadId, "student");
+      setThreads(next);
+    })();
   }, [activeThreadId]);
 
   const activeThread = useMemo(
@@ -91,14 +112,14 @@ export function MessagesPageClient({ preselectedThreadId, preselectedTeacherId, 
     [activeThreadId, personalThreads]
   );
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     const text = composerText.trim();
 
     if (!text || !activeThread) {
       return;
     }
 
-    const result = sendMessageToSharedChatThread({
+    const result = await sendMessageToSharedChatThreadViaApi({
       threadId: activeThread.id,
       teacherId: activeThread.teacherId,
       teacherName: activeThread.teacherName,
@@ -119,7 +140,7 @@ export function MessagesPageClient({ preselectedThreadId, preselectedTeacherId, 
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    sendMessage();
+    void sendMessage();
   };
 
   return (

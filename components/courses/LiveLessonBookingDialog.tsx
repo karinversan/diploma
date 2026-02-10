@@ -21,7 +21,7 @@ import {
   readLessonBookings
 } from "@/lib/lesson-bookings";
 import { createBookingEventViaApi, syncBookingsFromApi, upsertBookingViaApi } from "@/lib/api/bookings-client";
-import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
+import { sendMessageToSharedChatThreadViaApi } from "@/lib/api/chat-threads-client";
 import { studentProfile } from "@/data/student";
 import { cn } from "@/lib/utils";
 
@@ -289,7 +289,7 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
           description: `Создана заявка на слот ${selectedSlot.dateLabel} в ${selectedSlot.time}.`
         });
 
-        sendMessageToSharedChatThread({
+        await sendMessageToSharedChatThreadViaApi({
           teacherId: selectedTeacher.teacher.id,
           teacherName: selectedTeacher.teacher.name,
           teacherAvatarUrl: selectedTeacher.teacher.avatarUrl,

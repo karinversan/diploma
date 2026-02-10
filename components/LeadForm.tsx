@@ -6,7 +6,7 @@ import { FormEvent, useMemo, useState } from "react";
 
 import { assessmentSubjects } from "@/data/assessment";
 import { teachers } from "@/data/teachers";
-import { createTutorApplication } from "@/lib/tutor-applications";
+import { createTutorApplicationViaApi } from "@/lib/api/tutor-applications-client";
 
 type LeadRole = "student" | "tutor";
 type ContactMethod = "call" | "messenger" | "email";
@@ -110,19 +110,21 @@ export function LeadForm({ initialRole, selectedTeacher, subjectHint, levelHint 
     setIsSubmitting(true);
 
     window.setTimeout(() => {
-      if (role === "tutor" && fullName && phone && email && tutorSubjects && experience) {
-        createTutorApplication({
-          fullName,
-          phone,
-          email,
-          subjects: tutorSubjects,
-          experience,
-          message: `Предпочтительный канал связи: ${contactMethod}`,
-          source: "lead_form"
-        });
-      }
-      setIsSubmitting(false);
-      setIsSubmitted(true);
+      void (async () => {
+        if (role === "tutor" && fullName && phone && email && tutorSubjects && experience) {
+          await createTutorApplicationViaApi({
+            fullName,
+            phone,
+            email,
+            subjects: tutorSubjects,
+            experience,
+            message: `Предпочтительный канал связи: ${contactMethod}`,
+            source: "lead_form"
+          });
+        }
+        setIsSubmitting(false);
+        setIsSubmitted(true);
+      })();
     }, 700);
   };
 

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { type RefundTicket } from "@/data/admin";
-import { readRefundTickets, updateRefundTicket } from "@/lib/refund-tickets";
+import { syncRefundTicketsFromApi, updateRefundTicketViaApi } from "@/lib/api/refunds-client";
+import { readRefundTickets } from "@/lib/refund-tickets";
 import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
@@ -24,11 +25,21 @@ export default function AdminPaymentsPage() {
   const [tickets, setTickets] = useState<RefundTicket[]>([]);
 
   useEffect(() => {
+    let mounted = true;
     setTickets(readRefundTickets());
+
+    void (async () => {
+      const next = await syncRefundTicketsFromApi();
+      if (mounted) {
+        setTickets(next);
+      }
+    })();
+
     const syncTickets = () => setTickets(readRefundTickets());
     window.addEventListener("storage", syncTickets);
     window.addEventListener(STORAGE_SYNC_EVENT, syncTickets);
     return () => {
+      mounted = false;
       window.removeEventListener("storage", syncTickets);
       window.removeEventListener(STORAGE_SYNC_EVENT, syncTickets);
     };
@@ -40,8 +51,9 @@ export default function AdminPaymentsPage() {
       .reduce((acc, ticket) => acc + ticket.amountRubles, 0);
   }, [tickets]);
 
-  const updateTicket = (ticketId: string, status: RefundTicket["status"]) => {
-    setTickets(updateRefundTicket(ticketId, status));
+  const updateTicket = async (ticketId: string, status: RefundTicket["status"]) => {
+    const next = await updateRefundTicketViaApi(ticketId, { status });
+    setTickets(next);
   };
 
   return (
@@ -105,14 +117,14 @@ export default function AdminPaymentsPage() {
                       <div className="inline-flex flex-wrap justify-end gap-2">
                         <button
                           type="button"
-                          onClick={() => updateTicket(ticket.id, "approved")}
+                          onClick={() => void updateTicket(ticket.id, "approved")}
                           className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
                         >
                           Одобрить
                         </button>
                         <button
                           type="button"
-                          onClick={() => updateTicket(ticket.id, "declined")}
+                          onClick={() => void updateTicket(ticket.id, "declined")}
                           className="rounded-full bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
                         >
                           Отклонить

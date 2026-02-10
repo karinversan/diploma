@@ -6,7 +6,7 @@ import { FormEvent, useMemo, useState } from "react";
 
 import { teachers } from "@/data/teachers";
 import { resolveRouteByRole, writeDemoRole } from "@/lib/demo-role";
-import { createTutorApplication } from "@/lib/tutor-applications";
+import { createTutorApplicationViaApi } from "@/lib/api/tutor-applications-client";
 
 type SignupFormProps = {
   initialRole: "student" | "tutor";
@@ -42,34 +42,36 @@ export function SignupForm({ initialRole, selectedTeacher }: SignupFormProps) {
     setIsSubmitting(true);
 
     window.setTimeout(() => {
-      if (role === "tutor") {
-        const fullName = String(formData.get("full_name") ?? "").trim();
-        const phone = String(formData.get("phone") ?? "").trim();
-        const email = String(formData.get("email") ?? "").trim();
-        const subjects = String(formData.get("subjects") ?? "").trim();
-        const experience = String(formData.get("experience") ?? "").trim();
-        const about = String(formData.get("about") ?? "").trim();
+      void (async () => {
+        if (role === "tutor") {
+          const fullName = String(formData.get("full_name") ?? "").trim();
+          const phone = String(formData.get("phone") ?? "").trim();
+          const email = String(formData.get("email") ?? "").trim();
+          const subjects = String(formData.get("subjects") ?? "").trim();
+          const experience = String(formData.get("experience") ?? "").trim();
+          const about = String(formData.get("about") ?? "").trim();
 
-        if (fullName && phone && email && subjects && experience) {
-          createTutorApplication({
-            fullName,
-            phone,
-            email,
-            subjects,
-            experience,
-            message: about || undefined,
-            source: "signup_form"
-          });
+          if (fullName && phone && email && subjects && experience) {
+            await createTutorApplicationViaApi({
+              fullName,
+              phone,
+              email,
+              subjects,
+              experience,
+              message: about || undefined,
+              source: "signup_form"
+            });
+          }
         }
-      }
 
-      setIsSubmitting(false);
-      setIsSuccess(true);
-      window.setTimeout(() => {
-        const nextRole = role === "tutor" ? "teacher" : "student";
-        writeDemoRole(nextRole);
-        router.push(nextRole === "teacher" ? "/teacher/dashboard?onboarding=pending" : resolveRouteByRole(nextRole));
-      }, 700);
+        setIsSubmitting(false);
+        setIsSuccess(true);
+        window.setTimeout(() => {
+          const nextRole = role === "tutor" ? "teacher" : "student";
+          writeDemoRole(nextRole);
+          router.push(nextRole === "teacher" ? "/teacher/dashboard?onboarding=pending" : resolveRouteByRole(nextRole));
+        }, 700);
+      })();
     }, 700);
   };
 

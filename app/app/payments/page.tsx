@@ -18,8 +18,9 @@ import { type RefundTicket } from "@/data/admin";
 import { studentProfile } from "@/data/student";
 import { formatBookingSlotLabel, LessonBookingRequest, readLessonBookings } from "@/lib/lesson-bookings";
 import { createBookingEventViaApi, syncBookingsFromApi, updateBookingViaApi } from "@/lib/api/bookings-client";
+import { sendMessageToSharedChatThreadViaApi } from "@/lib/api/chat-threads-client";
+import { syncRefundTicketsFromApi } from "@/lib/api/refunds-client";
 import { readRefundTickets } from "@/lib/refund-tickets";
-import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
@@ -178,10 +179,24 @@ export default function PaymentsPage() {
   }, []);
 
   useEffect(() => {
+    let mounted = true;
     setRefundTickets(readRefundTickets());
+
+    void (async () => {
+      const next = await syncRefundTicketsFromApi();
+      if (mounted) {
+        setRefundTickets(next);
+      }
+    })();
+
     const syncRefunds = () => setRefundTickets(readRefundTickets());
     window.addEventListener("storage", syncRefunds);
-    return () => window.removeEventListener("storage", syncRefunds);
+    window.addEventListener(STORAGE_SYNC_EVENT, syncRefunds);
+    return () => {
+      mounted = false;
+      window.removeEventListener("storage", syncRefunds);
+      window.removeEventListener(STORAGE_SYNC_EVENT, syncRefunds);
+    };
   }, []);
 
   useEffect(() => {
@@ -316,7 +331,7 @@ export default function PaymentsPage() {
 
       setLessonBookings(nextBookings);
 
-      sendMessageToSharedChatThread({
+      await sendMessageToSharedChatThreadViaApi({
         teacherId: selectedLessonBooking.teacherId,
         teacherName: selectedLessonBooking.teacherName,
         studentId: selectedLessonBooking.studentId ?? studentProfile.id,

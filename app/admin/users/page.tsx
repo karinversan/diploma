@@ -4,8 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 
 import { adminUsers, type PlatformUser } from "@/data/admin";
+import {
+  syncTutorApplicationsFromApi,
+  updateTutorApplicationViaApi
+} from "@/lib/api/tutor-applications-client";
 import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
-import { readTutorApplications, TutorApplication, updateTutorApplication } from "@/lib/tutor-applications";
+import { readTutorApplications, TutorApplication } from "@/lib/tutor-applications";
 import { cn } from "@/lib/utils";
 
 function formatDate(value: string) {
@@ -22,6 +26,8 @@ export default function AdminUsersPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | PlatformUser["status"]>("all");
 
   useEffect(() => {
+    let mounted = true;
+
     const syncApplications = () => {
       const applications = readTutorApplications();
       const pending = applications.filter((item) => item.status === "pending").length;
@@ -30,9 +36,19 @@ export default function AdminUsersPage() {
     };
 
     syncApplications();
+    void (async () => {
+      const synced = await syncTutorApplicationsFromApi();
+      if (!mounted) {
+        return;
+      }
+      setTutorApplications(synced);
+      setPendingTutorApplications(synced.filter((item) => item.status === "pending").length);
+    })();
+
     window.addEventListener("storage", syncApplications);
     window.addEventListener(STORAGE_SYNC_EVENT, syncApplications);
     return () => {
+      mounted = false;
       window.removeEventListener("storage", syncApplications);
       window.removeEventListener(STORAGE_SYNC_EVENT, syncApplications);
     };
@@ -78,9 +94,9 @@ export default function AdminUsersPage() {
     );
   };
 
-  const moderateTutorApplication = (applicationId: string, status: TutorApplication["status"]) => {
+  const moderateTutorApplication = async (applicationId: string, status: TutorApplication["status"]) => {
     const note = status === "approved" ? "Профиль подтвержден администратором" : "Нужна доработка анкеты и документов";
-    const next = updateTutorApplication(applicationId, { status, adminNote: note });
+    const next = await updateTutorApplicationViaApi(applicationId, { status, adminNote: note });
     setTutorApplications(next);
     setPendingTutorApplications(next.filter((item) => item.status === "pending").length);
   };
@@ -253,14 +269,14 @@ export default function AdminUsersPage() {
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => moderateTutorApplication(application.id, "approved")}
+                      onClick={() => void moderateTutorApplication(application.id, "approved")}
                       className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
                     >
                       Одобрить
                     </button>
                     <button
                       type="button"
-                      onClick={() => moderateTutorApplication(application.id, "rejected")}
+                      onClick={() => void moderateTutorApplication(application.id, "rejected")}
                       className="rounded-full bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
                     >
                       Отклонить

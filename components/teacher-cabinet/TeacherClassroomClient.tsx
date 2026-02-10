@@ -27,8 +27,8 @@ import {
   syncBookingsFromApi,
   updateBookingViaApi
 } from "@/lib/api/bookings-client";
-import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
-import { createRefundTicket } from "@/lib/refund-tickets";
+import { sendMessageToSharedChatThreadViaApi } from "@/lib/api/chat-threads-client";
+import { createRefundTicketViaApi } from "@/lib/api/refunds-client";
 import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
@@ -864,12 +864,12 @@ export function TeacherClassroomClient({
     }).format(date);
   };
 
-  const notifyStudentByChat = (request: LessonBookingRequest, text: string) => {
+  const notifyStudentByChat = async (request: LessonBookingRequest, text: string) => {
     const teacherFromCatalog = getTeacherById(request.teacherId);
     const studentId = resolveRequestStudentId(request);
     const studentAvatarUrl = request.studentName === studentProfile.name ? studentProfile.avatarUrl : "/avatars/avatar-3.svg";
 
-    sendMessageToSharedChatThread({
+    await sendMessageToSharedChatThreadViaApi({
       teacherId: request.teacherId,
       teacherName: request.teacherName,
       teacherAvatarUrl: teacherFromCatalog?.avatarUrl ?? teacherCabinetProfile.avatarUrl,
@@ -921,7 +921,7 @@ export function TeacherClassroomClient({
         if (!options?.skipStateSync) {
           setBookingEvents(await syncBookingEventsFromApi());
         }
-        notifyStudentByChat(request, teacherMessage);
+        await notifyStudentByChat(request, teacherMessage);
         if (!options?.silentNote) {
           setTeacherActionNote(
             `Заявка на ${formatBookingSlotLabel(request.slot)} подтверждена. Теперь ученик увидит кнопку оплаты в разделе «Занятия».`
@@ -963,7 +963,7 @@ export function TeacherClassroomClient({
         if (!options?.skipStateSync) {
           setBookingEvents(await syncBookingEventsFromApi());
         }
-        notifyStudentByChat(request, teacherMessage);
+        await notifyStudentByChat(request, teacherMessage);
         if (!options?.silentNote) {
           setTeacherActionNote(`По заявке отправлен перенос на ${formatBookingSlotLabel(proposedSlot)}.`);
         }
@@ -994,7 +994,7 @@ export function TeacherClassroomClient({
       if (!options?.skipStateSync) {
         setBookingEvents(await syncBookingEventsFromApi());
       }
-      notifyStudentByChat(request, teacherMessage);
+      await notifyStudentByChat(request, teacherMessage);
       if (!options?.silentNote) {
         setTeacherActionNote("Заявка отклонена с комментарием преподавателя.");
       }
@@ -1214,7 +1214,7 @@ export function TeacherClassroomClient({
       const relatedBooking = bookingRequests.find((request) => request.id === bookingId);
 
       if (relatedBooking && relatedBooking.amountRubles && relatedBooking.amountRubles > 0) {
-        const refundResult = createRefundTicket({
+        const refundResult = await createRefundTicketViaApi({
           bookingId: relatedBooking.id,
           invoice: `#${Math.floor(1000 + Math.random() * 8999)}`,
           studentName: relatedBooking.studentName ?? "Ученик платформы",
@@ -1249,7 +1249,7 @@ export function TeacherClassroomClient({
       });
       setBookingEvents(await syncBookingEventsFromApi());
       if (relatedBooking) {
-        notifyStudentByChat(
+        await notifyStudentByChat(
           relatedBooking,
           "Занятие отменено преподавателем. Мы создали заявку на возврат, статус можно отслеживать в разделе «Платежи»."
         );
@@ -1303,7 +1303,7 @@ export function TeacherClassroomClient({
         description: `Новый слот: ${formatBookingSlotLabel(proposedSlot)}.`
       });
       setBookingEvents(await syncBookingEventsFromApi());
-      notifyStudentByChat(relatedBooking, teacherMessage);
+      await notifyStudentByChat(relatedBooking, teacherMessage);
       setTeacherActionNote(
         `Для занятия ${formatEventDateLabel(selectedEvent.date)} ${selectedEvent.startTime} предложен перенос на ${formatBookingSlotLabel(proposedSlot)}.`
       );

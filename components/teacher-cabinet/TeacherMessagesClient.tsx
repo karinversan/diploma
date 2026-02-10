@@ -7,10 +7,13 @@ import { SendHorizontal } from "lucide-react";
 import { teacherCabinetProfile } from "@/data/teacher-cabinet";
 import {
   SharedChatThread,
-  markSharedChatThreadRead,
-  readSharedChatThreads,
-  sendMessageToSharedChatThread
+  readSharedChatThreads
 } from "@/lib/chat-threads";
+import {
+  markSharedChatThreadReadViaApi,
+  sendMessageToSharedChatThreadViaApi,
+  syncChatThreadsFromApi
+} from "@/lib/api/chat-threads-client";
 import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
@@ -36,11 +39,21 @@ export function TeacherMessagesClient({ preselectedThreadId, preselectedStudentI
   const [draft, setDraft] = useState("");
 
   useEffect(() => {
+    let mounted = true;
     setThreads(readSharedChatThreads());
+
+    void (async () => {
+      const synced = await syncChatThreadsFromApi();
+      if (mounted) {
+        setThreads(synced);
+      }
+    })();
+
     const syncThreads = () => setThreads(readSharedChatThreads());
     window.addEventListener("storage", syncThreads);
     window.addEventListener(STORAGE_SYNC_EVENT, syncThreads);
     return () => {
+      mounted = false;
       window.removeEventListener("storage", syncThreads);
       window.removeEventListener(STORAGE_SYNC_EVENT, syncThreads);
     };
@@ -88,7 +101,10 @@ export function TeacherMessagesClient({ preselectedThreadId, preselectedStudentI
     if (!activeThreadId) {
       return;
     }
-    setThreads(markSharedChatThreadRead(activeThreadId, "teacher"));
+    void (async () => {
+      const next = await markSharedChatThreadReadViaApi(activeThreadId, "teacher");
+      setThreads(next);
+    })();
   }, [activeThreadId]);
 
   const activeThread = useMemo(
@@ -104,23 +120,25 @@ export function TeacherMessagesClient({ preselectedThreadId, preselectedStudentI
       return;
     }
 
-    const result = sendMessageToSharedChatThread({
-      threadId: activeThread.id,
-      teacherId: activeThread.teacherId,
-      teacherName: activeThread.teacherName,
-      teacherAvatarUrl: activeThread.teacherAvatarUrl,
-      studentId: activeThread.studentId,
-      studentName: activeThread.studentName,
-      studentAvatarUrl: activeThread.studentAvatarUrl,
-      subject: activeThread.subject,
-      courseTitle: activeThread.courseTitle,
-      sender: "teacher",
-      text: message
-    });
+    void (async () => {
+      const result = await sendMessageToSharedChatThreadViaApi({
+        threadId: activeThread.id,
+        teacherId: activeThread.teacherId,
+        teacherName: activeThread.teacherName,
+        teacherAvatarUrl: activeThread.teacherAvatarUrl,
+        studentId: activeThread.studentId,
+        studentName: activeThread.studentName,
+        studentAvatarUrl: activeThread.studentAvatarUrl,
+        subject: activeThread.subject,
+        courseTitle: activeThread.courseTitle,
+        sender: "teacher",
+        text: message
+      });
 
-    setThreads(result.threads);
-    setActiveThreadId(result.thread.id);
-    setDraft("");
+      setThreads(result.threads);
+      setActiveThreadId(result.thread.id);
+      setDraft("");
+    })();
   };
 
   return (

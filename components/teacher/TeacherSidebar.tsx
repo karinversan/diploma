@@ -14,7 +14,7 @@ import {
   readLessonBookings
 } from "@/lib/lesson-bookings";
 import { createBookingEventViaApi, syncBookingsFromApi, upsertBookingViaApi } from "@/lib/api/bookings-client";
-import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
+import { sendMessageToSharedChatThreadViaApi } from "@/lib/api/chat-threads-client";
 
 import { SelectedScheduleSlot } from "@/components/teacher/SchedulePicker";
 
@@ -183,7 +183,7 @@ export function TeacherSidebar({
           description: `Через профиль преподавателя выбран слот ${selectedSlot ? `${formatDate(selectedSlot.date)} ${selectedSlot.time}` : selectedSlotValue}.`
         });
 
-        sendMessageToSharedChatThread({
+        await sendMessageToSharedChatThreadViaApi({
           teacherId: teacher.id,
           teacherName: teacher.name,
           teacherAvatarUrl: teacher.avatarUrl,

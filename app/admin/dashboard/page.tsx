@@ -5,16 +5,18 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ShieldAlert, Sparkles, XCircle } from "lucide-react";
 
 import { platformKpis, tutorVerificationQueue, type LessonIncident, type RefundTicket } from "@/data/admin";
-import { readAdminLessonIncidents, updateAdminLessonIncident } from "@/lib/admin-incidents";
-import { readLessonBookings } from "@/lib/lesson-bookings";
-import { readRefundTickets, updateRefundTicket } from "@/lib/refund-tickets";
-import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
+import { readAdminLessonIncidents } from "@/lib/admin-incidents";
+import { syncAdminIncidentsFromApi, updateAdminIncidentViaApi } from "@/lib/api/admin-incidents-client";
+import { syncRefundTicketsFromApi, updateRefundTicketViaApi } from "@/lib/api/refunds-client";
 import {
-  ensureTutorApplicationsSeed,
-  readTutorApplications,
-  type TutorApplication,
-  updateTutorApplication
-} from "@/lib/tutor-applications";
+  ensureTutorApplicationsSeedViaApi,
+  syncTutorApplicationsFromApi,
+  updateTutorApplicationViaApi
+} from "@/lib/api/tutor-applications-client";
+import { readLessonBookings } from "@/lib/lesson-bookings";
+import { readRefundTickets } from "@/lib/refund-tickets";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
+import { readTutorApplications, type TutorApplication } from "@/lib/tutor-applications";
 import { cn } from "@/lib/utils";
 
 function formatDate(value: string) {
@@ -39,6 +41,8 @@ export default function AdminDashboardPage() {
   const [incidentQueue, setIncidentQueue] = useState<LessonIncident[]>([]);
 
   useEffect(() => {
+    let mounted = true;
+
     const seedFromData: TutorApplication[] = tutorVerificationQueue.map((request, index) => ({
       id: request.id,
       fullName: request.tutorName,
@@ -53,7 +57,7 @@ export default function AdminDashboardPage() {
       updatedAt: request.submittedAt
     }));
 
-    ensureTutorApplicationsSeed(seedFromData);
+    void ensureTutorApplicationsSeedViaApi(seedFromData);
 
     const syncData = () => {
       setVerificationQueue(readTutorApplications());
@@ -70,13 +74,37 @@ export default function AdminDashboardPage() {
       setRefundQueue(refunds);
       setPendingRefunds(refunds.filter((ticket) => ticket.status === "pending").length);
       setIncidentQueue(readAdminLessonIncidents());
+
+      void (async () => {
+        const syncedRefunds = await syncRefundTicketsFromApi();
+        if (!mounted) {
+          return;
+        }
+        setRefundQueue(syncedRefunds);
+        setPendingRefunds(syncedRefunds.filter((ticket) => ticket.status === "pending").length);
+      })();
+      void (async () => {
+        const syncedIncidents = await syncAdminIncidentsFromApi();
+        if (mounted) {
+          setIncidentQueue(syncedIncidents);
+        }
+      })();
     };
 
     syncData();
+    void (async () => {
+      const syncedApplications = await syncTutorApplicationsFromApi();
+      if (!mounted) {
+        return;
+      }
+      setVerificationQueue(syncedApplications);
+    })();
+
     window.addEventListener("storage", syncData);
     window.addEventListener(STORAGE_SYNC_EVENT, syncData);
 
     return () => {
+      mounted = false;
       window.removeEventListener("storage", syncData);
       window.removeEventListener(STORAGE_SYNC_EVENT, syncData);
     };
@@ -116,18 +144,20 @@ export default function AdminDashboardPage() {
       .slice(0, 2);
   }, [incidentQueue]);
 
-  const updateVerification = (requestId: string, status: TutorApplication["status"], note: string) => {
-    setVerificationQueue(updateTutorApplication(requestId, { status, adminNote: note }));
+  const updateVerification = async (requestId: string, status: TutorApplication["status"], note: string) => {
+    const next = await updateTutorApplicationViaApi(requestId, { status, adminNote: note });
+    setVerificationQueue(next);
   };
 
-  const moderateRefund = (ticketId: string, status: RefundTicket["status"]) => {
-    const next = updateRefundTicket(ticketId, status);
+  const moderateRefund = async (ticketId: string, status: RefundTicket["status"]) => {
+    const next = await updateRefundTicketViaApi(ticketId, { status });
     setRefundQueue(next);
     setPendingRefunds(next.filter((ticket) => ticket.status === "pending").length);
   };
 
-  const changeIncidentStatus = (incidentId: string, status: LessonIncident["status"]) => {
-    setIncidentQueue(updateAdminLessonIncident(incidentId, { status }));
+  const changeIncidentStatus = async (incidentId: string, status: LessonIncident["status"]) => {
+    const next = await updateAdminIncidentViaApi(incidentId, { status });
+    setIncidentQueue(next);
   };
 
   return (
@@ -205,7 +235,7 @@ export default function AdminDashboardPage() {
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => updateVerification(request.id, "approved", "Профиль прошел модерацию")}
+                      onClick={() => void updateVerification(request.id, "approved", "Профиль прошел модерацию")}
                       className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -213,7 +243,7 @@ export default function AdminDashboardPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => updateVerification(request.id, "rejected", "Требуется доработка документов")}
+                      onClick={() => void updateVerification(request.id, "rejected", "Требуется доработка документов")}
                       className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
                     >
                       <XCircle className="h-3.5 w-3.5" />
@@ -280,14 +310,14 @@ export default function AdminDashboardPage() {
                         <div className="mt-2 flex flex-wrap gap-2">
                           <button
                             type="button"
-                            onClick={() => moderateRefund(ticket.id, "approved")}
+                            onClick={() => void moderateRefund(ticket.id, "approved")}
                             className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
                           >
                             Одобрить
                           </button>
                           <button
                             type="button"
-                            onClick={() => moderateRefund(ticket.id, "declined")}
+                            onClick={() => void moderateRefund(ticket.id, "declined")}
                             className="rounded-full bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
                           >
                             Отклонить
@@ -327,7 +357,7 @@ export default function AdminDashboardPage() {
                           {incident.status !== "in_progress" ? (
                             <button
                               type="button"
-                              onClick={() => changeIncidentStatus(incident.id, "in_progress")}
+                            onClick={() => void changeIncidentStatus(incident.id, "in_progress")}
                               className="rounded-full border border-border bg-white px-2.5 py-1 text-[11px] font-semibold text-foreground"
                             >
                               В работу
@@ -336,7 +366,7 @@ export default function AdminDashboardPage() {
                           {incident.status !== "resolved" ? (
                             <button
                               type="button"
-                              onClick={() => changeIncidentStatus(incident.id, "resolved")}
+                            onClick={() => void changeIncidentStatus(incident.id, "resolved")}
                               className="rounded-full bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white"
                             >
                               Закрыть
