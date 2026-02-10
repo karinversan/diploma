@@ -9,3 +9,8 @@ pnpm-debug.log*
 .env
 .env.local
 Plan_isprav.docx
+docs/plan-gap-analysis.md
+docs/diploma_working_text.doc
+docs/diploma_working_text.docx
+docs/diploma_working_text.md
+.gitignore
