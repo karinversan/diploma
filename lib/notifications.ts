@@ -1,12 +1,15 @@
-import { type RefundTicket } from "@/data/admin";
+import { tutorVerificationQueue, type RefundTicket } from "@/data/admin";
 import { studentProfile } from "@/data/student";
 import { teacherCabinetProfile } from "@/data/teacher-cabinet";
 import { type SharedChatThread, readSharedChatThreads } from "@/lib/chat-threads";
 import { type LessonBookingRequest, readLessonBookings } from "@/lib/lesson-bookings";
+import { type BookingEvent, readBookingEvents } from "@/lib/booking-events";
 import { readRefundTickets } from "@/lib/refund-tickets";
+import { type TutorApplication, readTutorApplications } from "@/lib/tutor-applications";
+import { readAdminLessonIncidents } from "@/lib/admin-incidents";
 
-export type NotificationRole = "student" | "teacher";
-export type NotificationKind = "booking" | "payment" | "refund" | "message";
+export type NotificationRole = "student" | "teacher" | "admin";
+export type NotificationKind = "booking" | "payment" | "refund" | "message" | "moderation";
 
 export type NotificationItem = {
   id: string;
@@ -19,7 +22,8 @@ export type NotificationItem = {
 
 const NOTIFICATION_READ_KEYS: Record<NotificationRole, string> = {
   student: "notifications-read-student-v1",
-  teacher: "notifications-read-teacher-v1"
+  teacher: "notifications-read-teacher-v1",
+  admin: "notifications-read-admin-v1"
 };
 
 function canUseStorage() {
@@ -311,6 +315,104 @@ function buildTeacherMessageNotifications(threads: SharedChatThread[]) {
     }));
 }
 
+function readTutorApplicationsForAdmin() {
+  const stored = readTutorApplications();
+  if (stored.length > 0) {
+    return stored;
+  }
+
+  return tutorVerificationQueue.map<TutorApplication>((request, index) => ({
+    id: request.id,
+    fullName: request.tutorName,
+    email: `tutor${index + 1}@example.com`,
+    phone: "+7 (900) 000-00-00",
+    subjects: request.subjects.join(", "),
+    experience: `${request.experienceYears} лет`,
+    source: "lead_form",
+    status: request.status,
+    adminNote: request.note,
+    createdAt: request.submittedAt,
+    updatedAt: request.submittedAt
+  }));
+}
+
+function buildAdminTutorApplicationNotifications(applications: TutorApplication[]) {
+  return applications
+    .filter((application) => application.status === "pending")
+    .map<NotificationItem>((application) => ({
+      id: `admin-tutor-${application.id}-${application.status}-${application.updatedAt}`,
+      kind: "moderation",
+      title: "Новая заявка преподавателя",
+      description: `${application.fullName}: ${application.subjects}. Требуется решение модератора.`,
+      createdAt: toIso(application.updatedAt || application.createdAt),
+      href: "/admin/users"
+    }));
+}
+
+function buildAdminRefundNotifications(tickets: RefundTicket[]) {
+  return tickets
+    .filter((ticket) => ticket.status === "pending")
+    .map<NotificationItem>((ticket) => ({
+      id: `admin-refund-${ticket.id}-${ticket.status}-${ticket.createdAt}`,
+      kind: "refund",
+      title: "Новый возврат в обработке",
+      description: `${ticket.invoice}: ${ticket.studentName}, сумма ${ticket.amountRubles.toLocaleString("ru-RU")} ₽.`,
+      createdAt: toIso(ticket.createdAt),
+      href: "/admin/payments"
+    }));
+}
+
+function buildAdminBookingNotifications(bookings: LessonBookingRequest[]) {
+  return bookings
+    .filter((booking) => booking.status === "pending" || booking.status === "awaiting_payment")
+    .map<NotificationItem>((booking) => ({
+      id: `admin-booking-${booking.id}-${booking.status}-${booking.updatedAt}`,
+      kind: booking.status === "awaiting_payment" ? "payment" : "booking",
+      title: booking.status === "awaiting_payment" ? "Слот подтвержден, ожидается оплата" : "Новая заявка на слот",
+      description:
+        booking.status === "awaiting_payment"
+          ? `${booking.studentName ?? "Ученик"}: ${booking.subject}, слот ${booking.slot}.`
+          : `${booking.teacherName}: ${booking.subject}, слот ${booking.slot}.`,
+      createdAt: toIso(booking.updatedAt || booking.createdAt),
+      href: "/admin/dashboard"
+    }));
+}
+
+function buildAdminIncidentNotifications() {
+  return readAdminLessonIncidents()
+    .filter((incident) => incident.status !== "resolved")
+    .map<NotificationItem>((incident) => ({
+      id: `admin-incident-${incident.id}-${incident.status}-${incident.createdAt}`,
+      kind: "moderation",
+      title: incident.severity === "высокий" ? "Критичный инцидент урока" : "Новый инцидент урока",
+      description: `${incident.lessonTitle}: ${incident.type}, уровень ${incident.severity}.`,
+      createdAt: toIso(incident.createdAt),
+      href: "/admin/lessons"
+    }));
+}
+
+function buildAdminBookingEventNotifications(events: BookingEvent[], bookings: LessonBookingRequest[]) {
+  const bookingsById = new Map(bookings.map((booking) => [booking.id, booking]));
+
+  return events
+    .filter((event) => event.action === "refund_created" || event.action === "teacher_cancelled")
+    .map<NotificationItem>((event) => {
+      const booking = bookingsById.get(event.bookingId);
+      const context = booking
+        ? `${booking.teacherName} · ${booking.studentName ?? "Ученик"}`
+        : "Занятие без привязки к карточке";
+
+      return {
+        id: `admin-booking-event-${event.id}`,
+        kind: event.action === "refund_created" ? "refund" : "booking",
+        title: event.title,
+        description: `${context}. ${event.description}`,
+        createdAt: toIso(event.createdAt),
+        href: event.action === "refund_created" ? "/admin/payments" : "/admin/dashboard"
+      };
+    });
+}
+
 function sortNotifications(items: NotificationItem[]) {
   return [...items].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
@@ -318,9 +420,9 @@ function sortNotifications(items: NotificationItem[]) {
 export function readNotificationsForRole(role: NotificationRole) {
   const bookings = readLessonBookings();
   const refunds = readRefundTickets();
-  const threads = readSharedChatThreads();
 
   if (role === "student") {
+    const threads = readSharedChatThreads();
     const studentBookings = bookings.filter((booking) => isStudentBooking(booking));
     const bookingIds = new Set(studentBookings.map((booking) => booking.id));
 
@@ -335,18 +437,31 @@ export function readNotificationsForRole(role: NotificationRole) {
     return sortNotifications([...bookingNotifications, ...refundNotifications, ...threadNotifications]);
   }
 
-  const teacherBookings = selectTeacherBookings(bookings);
-  const bookingIds = new Set(teacherBookings.map((booking) => booking.id));
+  if (role === "teacher") {
+    const threads = readSharedChatThreads();
+    const teacherBookings = selectTeacherBookings(bookings);
+    const bookingIds = new Set(teacherBookings.map((booking) => booking.id));
 
-  const bookingNotifications = teacherBookings
-    .map((booking) => buildTeacherBookingNotification(booking))
-    .filter((item): item is NotificationItem => Boolean(item));
-  const refundNotifications = refunds
-    .map((ticket) => buildTeacherRefundNotification(ticket, bookingIds))
-    .filter((item): item is NotificationItem => Boolean(item));
-  const threadNotifications = buildTeacherMessageNotifications(selectTeacherThreads(threads));
+    const bookingNotifications = teacherBookings
+      .map((booking) => buildTeacherBookingNotification(booking))
+      .filter((item): item is NotificationItem => Boolean(item));
+    const refundNotifications = refunds
+      .map((ticket) => buildTeacherRefundNotification(ticket, bookingIds))
+      .filter((item): item is NotificationItem => Boolean(item));
+    const threadNotifications = buildTeacherMessageNotifications(selectTeacherThreads(threads));
 
-  return sortNotifications([...bookingNotifications, ...refundNotifications, ...threadNotifications]);
+    return sortNotifications([...bookingNotifications, ...refundNotifications, ...threadNotifications]);
+  }
+
+  const adminNotifications = [
+    ...buildAdminTutorApplicationNotifications(readTutorApplicationsForAdmin()),
+    ...buildAdminRefundNotifications(refunds),
+    ...buildAdminBookingNotifications(bookings),
+    ...buildAdminIncidentNotifications(),
+    ...buildAdminBookingEventNotifications(readBookingEvents(), bookings)
+  ];
+
+  return sortNotifications(adminNotifications);
 }
 
 export function readSeenNotificationIds(role: NotificationRole) {

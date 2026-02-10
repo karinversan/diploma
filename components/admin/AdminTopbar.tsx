@@ -2,9 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Bell, Menu, Search } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 
 import { adminProfile } from "@/data/admin";
+import { NotificationCenter } from "@/components/shared/NotificationCenter";
 
 type AdminTopbarProps = {
   pathname: string;
@@ -57,13 +58,7 @@ export function AdminTopbar({ pathname, onOpenSidebar }: AdminTopbarProps) {
             />
           </label>
 
-          <button
-            type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-white text-foreground transition hover:border-primary"
-            aria-label="Уведомления"
-          >
-            <Bell className="h-4 w-4" />
-          </button>
+          <NotificationCenter role="admin" />
 
           <details className="relative">
             <summary className="list-none [&::-webkit-details-marker]:hidden">

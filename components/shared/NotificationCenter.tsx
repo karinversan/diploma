@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, CalendarClock, CheckCheck, CircleAlert, CreditCard, MessageSquareText } from "lucide-react";
+import { Bell, CalendarClock, CheckCheck, CircleAlert, CreditCard, MessageSquareText, ShieldAlert } from "lucide-react";
 
 import {
   NotificationItem,
@@ -12,6 +12,7 @@ import {
   readNotificationsForRole,
   readSeenNotificationIds
 } from "@/lib/notifications";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
 type NotificationCenterProps = {
@@ -41,6 +42,9 @@ function NotificationIcon({ kind }: { kind: NotificationItem["kind"] }) {
   if (kind === "refund") {
     return <CircleAlert className="h-4 w-4 text-rose-600" />;
   }
+  if (kind === "moderation") {
+    return <ShieldAlert className="h-4 w-4 text-orange-600" />;
+  }
   return <CalendarClock className="h-4 w-4 text-emerald-600" />;
 }
 
@@ -50,16 +54,18 @@ export function NotificationCenter({ role }: NotificationCenterProps) {
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
 
   useEffect(() => {
-    setNotifications(readNotificationsForRole(role));
-    setSeenNotificationIds(readSeenNotificationIds(role));
-
     const sync = () => {
       setNotifications(readNotificationsForRole(role));
       setSeenNotificationIds(readSeenNotificationIds(role));
     };
 
+    sync();
     window.addEventListener("storage", sync);
-    return () => window.removeEventListener("storage", sync);
+    window.addEventListener(STORAGE_SYNC_EVENT, sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener(STORAGE_SYNC_EVENT, sync);
+    };
   }, [role]);
 
   const unseenIds = useMemo(() => {
@@ -77,9 +83,8 @@ export function NotificationCenter({ role }: NotificationCenterProps) {
   const handleOpenNotification = (id: string) => {
     const next = markNotificationAsRead(role, id);
     setSeenNotificationIds(next);
-    setOpen(false);
     if (detailsRef.current) {
-      detailsRef.current.removeAttribute("open");
+      detailsRef.current.open = false;
     }
   };
 
@@ -87,6 +92,13 @@ export function NotificationCenter({ role }: NotificationCenterProps) {
     <details
       ref={detailsRef}
       className="relative"
+      onToggle={(event) => {
+        const element = event.currentTarget;
+        if (element.open) {
+          setNotifications(readNotificationsForRole(role));
+          setSeenNotificationIds(readSeenNotificationIds(role));
+        }
+      }}
     >
       <summary className="list-none [&::-webkit-details-marker]:hidden">
         <span className="relative inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl border border-border bg-white text-foreground transition hover:border-primary">
