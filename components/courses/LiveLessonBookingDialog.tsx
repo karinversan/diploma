@@ -21,6 +21,7 @@ import {
   readLessonBookings,
   upsertLessonBooking
 } from "@/lib/lesson-bookings";
+import { createBookingEvent } from "@/lib/booking-events";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { studentProfile } from "@/data/student";
 import { cn } from "@/lib/utils";
@@ -268,6 +269,14 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
       });
 
       if (!existing) {
+        createBookingEvent({
+          bookingId,
+          actor: "student",
+          action: "booking_created",
+          title: "Заявка отправлена",
+          description: `Создана заявка на слот ${selectedSlot.dateLabel} в ${selectedSlot.time}.`
+        });
+
         sendMessageToSharedChatThread({
           teacherId: selectedTeacher.teacher.id,
           teacherName: selectedTeacher.teacher.name,

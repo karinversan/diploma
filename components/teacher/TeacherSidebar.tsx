@@ -14,6 +14,7 @@ import {
   readLessonBookings,
   upsertLessonBooking
 } from "@/lib/lesson-bookings";
+import { createBookingEvent } from "@/lib/booking-events";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 
 import { SelectedScheduleSlot } from "@/components/teacher/SchedulePicker";
@@ -173,6 +174,14 @@ export function TeacherSidebar({
       });
 
       if (!existing) {
+        createBookingEvent({
+          bookingId,
+          actor: "student",
+          action: "booking_created",
+          title: "Заявка отправлена",
+          description: `Через профиль преподавателя выбран слот ${selectedSlot ? `${formatDate(selectedSlot.date)} ${selectedSlot.time}` : selectedSlotValue}.`
+        });
+
         sendMessageToSharedChatThread({
           teacherId: teacher.id,
           teacherName: teacher.name,

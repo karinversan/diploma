@@ -21,6 +21,7 @@ import {
   readLessonBookings,
   updateLessonBooking
 } from "@/lib/lesson-bookings";
+import { BookingEvent, createBookingEvent, readBookingEvents } from "@/lib/booking-events";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { createRefundTicket } from "@/lib/refund-tickets";
 import { cn } from "@/lib/utils";
@@ -123,6 +124,7 @@ export function TeacherClassroomClient() {
   const [selectedEvent, setSelectedEvent] = useState<ClassroomEvent | null>(null);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [bookingRequests, setBookingRequests] = useState<LessonBookingRequest[]>([]);
+  const [bookingEvents, setBookingEvents] = useState<BookingEvent[]>([]);
   const [teacherActionNote, setTeacherActionNote] = useState<string | null>(null);
 
   const weekDays = useMemo(() => createWeekDays(anchorDate), [anchorDate]);
@@ -140,9 +142,14 @@ export function TeacherClassroomClient() {
 
   useEffect(() => {
     setBookingRequests(readLessonBookings());
+    setBookingEvents(readBookingEvents());
     const syncBookings = () => setBookingRequests(readLessonBookings());
-    window.addEventListener("storage", syncBookings);
-    return () => window.removeEventListener("storage", syncBookings);
+    const syncAll = () => {
+      setBookingRequests(readLessonBookings());
+      setBookingEvents(readBookingEvents());
+    };
+    window.addEventListener("storage", syncAll);
+    return () => window.removeEventListener("storage", syncAll);
   }, []);
 
   const requestsForTeacher = useMemo(
@@ -259,6 +266,37 @@ export function TeacherClassroomClient() {
     return { startMinute, endMinute, markers };
   }, [weekEvents]);
 
+  const bookingEventsByRequest = useMemo(() => {
+    const map = new Map<string, BookingEvent[]>();
+    for (const event of bookingEvents) {
+      const list = map.get(event.bookingId) ?? [];
+      list.push(event);
+      map.set(event.bookingId, list);
+    }
+
+    for (const [key, list] of Array.from(map.entries())) {
+      map.set(
+        key,
+        [...list].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+      );
+    }
+
+    return map;
+  }, [bookingEvents]);
+
+  const formatEventLogDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "сейчас";
+    }
+    return new Intl.DateTimeFormat("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(date);
+  };
+
   const notifyStudentByChat = (request: LessonBookingRequest, text: string) => {
     const teacherFromCatalog = getTeacherById(request.teacherId);
     const studentId = resolveRequestStudentId(request);
@@ -290,6 +328,14 @@ export function TeacherClassroomClient() {
       proposedSlot: undefined
     });
     setBookingRequests(next);
+    createBookingEvent({
+      bookingId: request.id,
+      actor: "teacher",
+      action: "teacher_approved",
+      title: "Слот подтвержден преподавателем",
+      description: "Ученик может перейти к оплате занятия."
+    });
+    setBookingEvents(readBookingEvents());
     notifyStudentByChat(
       request,
       `Подтвердил(а) ваш слот ${formatBookingSlotLabel(request.slot)}. Следующий шаг: оплата в разделе «Платежи».`
@@ -312,6 +358,14 @@ export function TeacherClassroomClient() {
       teacherMessage: `Предлагаю перенос на ${formatBookingSlotLabel(proposedSlot)}.`
     });
     setBookingRequests(next);
+    createBookingEvent({
+      bookingId: request.id,
+      actor: "teacher",
+      action: "teacher_reschedule_proposed",
+      title: "Предложен перенос",
+      description: `Новый слот: ${formatBookingSlotLabel(proposedSlot)}.`
+    });
+    setBookingEvents(readBookingEvents());
     notifyStudentByChat(request, `Предлагаю перенести занятие на ${formatBookingSlotLabel(proposedSlot)}. Подтвердите перенос в разделе «Занятия».`);
     setTeacherActionNote(`По заявке отправлен перенос на ${formatBookingSlotLabel(proposedSlot)}.`);
   };
@@ -323,6 +377,14 @@ export function TeacherClassroomClient() {
       teacherMessage
     });
     setBookingRequests(next);
+    createBookingEvent({
+      bookingId: request.id,
+      actor: "teacher",
+      action: "teacher_declined",
+      title: "Заявка отклонена преподавателем",
+      description: teacherMessage
+    });
+    setBookingEvents(readBookingEvents());
     notifyStudentByChat(request, "К сожалению, выбранный слот недоступен. Пожалуйста, выберите другое время.");
     setTeacherActionNote("Заявка отклонена с комментарием преподавателя.");
   };
@@ -354,12 +416,23 @@ export function TeacherClassroomClient() {
       const relatedBooking = bookingRequests.find((request) => request.id === bookingId);
 
       if (relatedBooking && relatedBooking.amountRubles && relatedBooking.amountRubles > 0) {
-        createRefundTicket({
+        const refundResult = createRefundTicket({
           bookingId: relatedBooking.id,
           invoice: `#${Math.floor(1000 + Math.random() * 8999)}`,
           studentName: relatedBooking.studentName ?? "Ученик платформы",
           amountRubles: relatedBooking.amountRubles,
           reason: "Отмена оплаченного занятия преподавателем"
+        });
+
+        createBookingEvent({
+          bookingId: relatedBooking.id,
+          actor: "system",
+          action: "refund_created",
+          title: refundResult.mode === "created" ? "Заявка на возврат создана" : "Возврат уже в обработке",
+          description:
+            refundResult.mode === "created"
+              ? `Создан возврат ${refundResult.item.invoice} на сумму ${relatedBooking.amountRubles.toLocaleString("ru-RU")} ₽.`
+              : `Возврат ${refundResult.item.invoice} уже существует в системе.`
         });
       }
 
@@ -369,6 +442,14 @@ export function TeacherClassroomClient() {
           "Занятие отменено преподавателем. Мы создали заявку на возврат, статус будет виден в разделе «Платежи»."
       });
       setBookingRequests(next);
+      createBookingEvent({
+        bookingId,
+        actor: "teacher",
+        action: "teacher_cancelled",
+        title: "Занятие отменено преподавателем",
+        description: "Ученик получил уведомление об отмене и инструкции по возврату."
+      });
+      setBookingEvents(readBookingEvents());
       if (relatedBooking) {
         notifyStudentByChat(
           relatedBooking,
@@ -555,6 +636,22 @@ export function TeacherClassroomClient() {
                     </p>
                     {request.studentMessage ? (
                       <p className="mt-1 text-xs text-muted-foreground">Сообщение ученика: {request.studentMessage}</p>
+                    ) : null}
+                    {(bookingEventsByRequest.get(request.id) ?? []).length > 0 ? (
+                      <details className="mt-2 rounded-xl border border-border bg-slate-50 p-2">
+                        <summary className="cursor-pointer text-xs font-semibold text-foreground">История действий</summary>
+                        <div className="mt-2 space-y-2">
+                          {(bookingEventsByRequest.get(request.id) ?? []).map((event) => (
+                            <div key={event.id} className="rounded-lg border border-border bg-white px-2.5 py-2">
+                              <p className="text-xs font-semibold text-foreground">{event.title}</p>
+                              <p className="mt-0.5 text-[11px] text-muted-foreground">{event.description}</p>
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                {formatEventLogDate(event.createdAt)} · {event.actor}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
                     ) : null}
                     {request.status === "awaiting_payment" ? (
                       <div className="mt-2 flex flex-wrap items-center gap-2">

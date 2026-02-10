@@ -20,6 +20,7 @@ import {
   upsertLessonBooking,
   updateLessonBooking
 } from "@/lib/lesson-bookings";
+import { BookingEvent, createBookingEvent, readBookingEvents } from "@/lib/booking-events";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { cn } from "@/lib/utils";
 
@@ -192,14 +193,19 @@ export function LessonsPageClient({
 }: LessonsPageClientProps) {
   const [activeTab, setActiveTab] = useState<LessonTab>("upcoming");
   const [bookings, setBookings] = useState<LessonBookingRequest[]>([]);
+  const [bookingEvents, setBookingEvents] = useState<BookingEvent[]>([]);
   const [notice, setNotice] = useState<InlineNotice | null>(null);
 
   const teacher = selectedTeacher ? getTeacherById(selectedTeacher) : undefined;
 
   useEffect(() => {
     setBookings(readLessonBookings());
+    setBookingEvents(readBookingEvents());
 
-    const syncBookings = () => setBookings(readLessonBookings());
+    const syncBookings = () => {
+      setBookings(readLessonBookings());
+      setBookingEvents(readBookingEvents());
+    };
     window.addEventListener("storage", syncBookings);
     return () => window.removeEventListener("storage", syncBookings);
   }, []);
@@ -248,10 +254,34 @@ export function LessonsPageClient({
     return bookings.find((booking) => booking.id === selectedBookingId);
   }, [bookings, selectedBookingId]);
 
-  const selectedBookingTimeline = useMemo(
-    () => (selectedBooking ? buildBookingTimeline(selectedBooking) : []),
-    [selectedBooking]
-  );
+  const selectedBookingTimeline = useMemo(() => {
+    if (!selectedBooking) {
+      return [];
+    }
+
+    const explicitTimeline = bookingEvents
+      .filter((event) => event.bookingId === selectedBooking.id)
+      .map((event) => ({
+        id: event.id,
+        title: event.title,
+        description: event.description,
+        createdAt: event.createdAt,
+        tone:
+          event.action.includes("cancel") || event.action.includes("decline")
+            ? ("danger" as const)
+            : event.action.includes("paid")
+              ? ("success" as const)
+              : event.action.includes("approved") || event.action.includes("reschedule")
+                ? ("primary" as const)
+                : ("neutral" as const)
+      }));
+
+    if (explicitTimeline.length > 0) {
+      return explicitTimeline.sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+    }
+
+    return buildBookingTimeline(selectedBooking);
+  }, [bookingEvents, selectedBooking]);
 
   const filteredBookings = useMemo(() => {
     return bookings.filter((booking) => {
@@ -313,6 +343,14 @@ export function LessonsPageClient({
     });
 
     if (!existing) {
+      createBookingEvent({
+        bookingId: candidateBooking.id,
+        actor: "student",
+        action: "booking_created",
+        title: "Заявка отправлена",
+        description: `Слот ${formatBookingSlotLabel(candidateBooking.slot)} отправлен преподавателю.`
+      });
+
       sendMessageToSharedChatThread({
         teacherId: candidateBooking.teacherId,
         teacherName: candidateBooking.teacherName,
@@ -326,6 +364,7 @@ export function LessonsPageClient({
         text: studentMessageText
       });
     }
+    setBookingEvents(readBookingEvents());
 
     setBookings(next);
     setNotice({
@@ -339,7 +378,15 @@ export function LessonsPageClient({
 
   const cancelBookingRequest = (bookingId: string) => {
     const next = updateLessonBooking(bookingId, { status: "cancelled" });
+    createBookingEvent({
+      bookingId,
+      actor: "student",
+      action: "student_cancelled",
+      title: "Заявка отменена учеником",
+      description: "Ученик отменил заявку до проведения занятия."
+    });
     setBookings(next);
+    setBookingEvents(readBookingEvents());
     setNotice({
       kind: "info",
       title: "Заявка отменена",
@@ -368,7 +415,15 @@ export function LessonsPageClient({
       proposedSlot: undefined,
       startAt
     });
+    createBookingEvent({
+      bookingId: booking.id,
+      actor: "student",
+      action: "student_accepted_reschedule",
+      title: "Перенос принят учеником",
+      description: `Новый слот: ${formatBookingSlotLabel(booking.proposedSlot)}.`
+    });
     setBookings(next);
+    setBookingEvents(readBookingEvents());
     setNotice({
       kind: "success",
       title: "Перенос подтвержден",

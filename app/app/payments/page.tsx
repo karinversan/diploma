@@ -17,6 +17,7 @@ import {
 import { type RefundTicket } from "@/data/admin";
 import { studentProfile } from "@/data/student";
 import { formatBookingSlotLabel, LessonBookingRequest, readLessonBookings, updateLessonBooking } from "@/lib/lesson-bookings";
+import { createBookingEvent } from "@/lib/booking-events";
 import { readRefundTickets } from "@/lib/refund-tickets";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { cn } from "@/lib/utils";
@@ -288,6 +289,14 @@ export default function PaymentsPage() {
       paidAt,
       amountRubles,
       teacherMessage: "Оплата получена. Занятие добавлено в расписание."
+    });
+
+    createBookingEvent({
+      bookingId: selectedLessonBooking.id,
+      actor: "student",
+      action: "payment_paid",
+      title: "Занятие оплачено",
+      description: `Оплата ${formatAmount(amountRubles)} за слот ${formatBookingSlotLabel(selectedLessonBooking.slot)} успешно завершена.`
     });
 
     setLessonBookings(nextBookings);
