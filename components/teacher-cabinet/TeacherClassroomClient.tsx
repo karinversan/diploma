@@ -203,6 +203,14 @@ function isActionableRequestStatus(status: LessonBookingRequest["status"]) {
   return status === "pending" || status === "reschedule_proposed";
 }
 
+function buildNextDaySlotForRequest(request: LessonBookingRequest) {
+  const sourceDate = new Date(request.startAt);
+  const proposedDate = new Date(sourceDate.getTime() + 24 * 60 * 60 * 1000);
+  const datePart = `${proposedDate.getFullYear()}-${String(proposedDate.getMonth() + 1).padStart(2, "0")}-${String(proposedDate.getDate()).padStart(2, "0")}`;
+  const timePart = `${String(sourceDate.getHours()).padStart(2, "0")}:${String(sourceDate.getMinutes()).padStart(2, "0")}`;
+  return `${datePart} ${timePart}`;
+}
+
 function buildTeacherActionMessage({
   action,
   request,
@@ -279,6 +287,8 @@ export function TeacherClassroomClient({
   const [messageTone, setMessageTone] = useState<MessageTone>("standard");
   const [teacherMessageDraft, setTeacherMessageDraft] = useState("");
   const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
+  const [pendingBulkAction, setPendingBulkAction] = useState<RequestAction | null>(null);
+  const [isBulkConfirmOpen, setIsBulkConfirmOpen] = useState(false);
 
   const weekDays = useMemo(() => createWeekDays(anchorDate), [anchorDate]);
 
@@ -375,6 +385,9 @@ export function TeacherClassroomClient({
   const selectableQueueSet = useMemo(() => new Set(selectableQueueRequestIds), [selectableQueueRequestIds]);
   const selectedSelectableCount = selectedRequestIds.filter((id) => selectableQueueSet.has(id)).length;
   const allSelectableSelected = selectableQueueRequestIds.length > 0 && selectedSelectableCount === selectableQueueRequestIds.length;
+  const selectedActionableRequests = useMemo(() => {
+    return requestQueue.filter((request) => selectedRequestIds.includes(request.id) && isActionableRequestStatus(request.status));
+  }, [requestQueue, selectedRequestIds]);
 
   useEffect(() => {
     const allowedIds = new Set(requestsForTeacher.map((request) => request.id));
@@ -709,6 +722,72 @@ export function TeacherClassroomClient({
     }
   };
 
+  const openBulkActionConfirm = (action: RequestAction) => {
+    if (selectedSelectableCount === 0) {
+      return;
+    }
+    setPendingBulkAction(action);
+    setIsBulkConfirmOpen(true);
+  };
+
+  const getBulkActionUi = (action: RequestAction) => {
+    if (action === "confirm") {
+      return {
+        title: "Подтвердить выбранные заявки",
+        button: "Подтвердить заявки",
+        buttonClass: "bg-primary text-primary-foreground"
+      };
+    }
+    if (action === "propose") {
+      return {
+        title: "Отправить перенос по выбранным заявкам",
+        button: "Отправить перенос",
+        buttonClass: "border border-border bg-white text-foreground"
+      };
+    }
+    return {
+      title: "Отклонить выбранные заявки",
+      button: "Отклонить заявки",
+      buttonClass: "border border-rose-200 bg-rose-50 text-rose-700"
+    };
+  };
+
+  const bulkActionPreviewMessage = useMemo(() => {
+    if (!pendingBulkAction || selectedActionableRequests.length === 0) {
+      return "";
+    }
+
+    const customMessage = teacherMessageDraft.trim();
+    if (customMessage) {
+      return customMessage;
+    }
+
+    const sampleRequest = selectedActionableRequests[0];
+    if (pendingBulkAction === "propose") {
+      return buildTeacherActionMessage({
+        action: "propose",
+        request: sampleRequest,
+        tone: messageTone,
+        proposedSlot: buildNextDaySlotForRequest(sampleRequest)
+      });
+    }
+
+    return buildTeacherActionMessage({
+      action: pendingBulkAction,
+      request: sampleRequest,
+      tone: messageTone
+    });
+  }, [messageTone, pendingBulkAction, selectedActionableRequests, teacherMessageDraft]);
+
+  const confirmBulkAction = () => {
+    if (!pendingBulkAction) {
+      return;
+    }
+    runBulkAction(pendingBulkAction);
+    setIsBulkConfirmOpen(false);
+    setPendingBulkAction(null);
+  };
+
   const selectedEventCourse = useMemo(() => {
     if (!selectedEvent) {
       return undefined;
@@ -783,6 +862,62 @@ export function TeacherClassroomClient({
       setManualCalendarEvents((prev) => prev.filter((event) => event.id !== selectedEvent.id));
       setTeacherActionNote(
         `Занятие «${selectedEvent.title}» с ${selectedEvent.participantName} (${formatEventDateLabel(selectedEvent.date)} ${selectedEvent.startTime}–${selectedEvent.endTime}) отменено.`
+      );
+    }
+
+    setIsEventModalOpen(false);
+    setSelectedEvent(null);
+  };
+
+  const proposeCalendarEventReschedule = () => {
+    if (!selectedEvent) {
+      return;
+    }
+
+    if (selectedEvent.id.startsWith("booking-")) {
+      const bookingId = selectedEvent.id.replace("booking-", "");
+      const relatedBooking = bookingRequests.find((request) => request.id === bookingId);
+
+      if (!relatedBooking) {
+        return;
+      }
+
+      const proposedSlot = buildNextDaySlotForRequest(relatedBooking);
+      const teacherMessage = buildTeacherActionMessage({
+        action: "propose",
+        request: relatedBooking,
+        tone: messageTone,
+        proposedSlot
+      });
+
+      const next = updateLessonBooking(bookingId, {
+        status: "reschedule_proposed",
+        proposedSlot,
+        teacherMessage
+      });
+      setBookingRequests(next);
+      createBookingEvent({
+        bookingId,
+        actor: "teacher",
+        action: "teacher_reschedule_proposed",
+        title: "Перенос предложен преподавателем",
+        description: `Новый слот: ${formatBookingSlotLabel(proposedSlot)}.`
+      });
+      setBookingEvents(readBookingEvents());
+      notifyStudentByChat(relatedBooking, teacherMessage);
+      setTeacherActionNote(
+        `Для занятия ${formatEventDateLabel(selectedEvent.date)} ${selectedEvent.startTime} предложен перенос на ${formatBookingSlotLabel(proposedSlot)}.`
+      );
+    } else {
+      const sourceDate = new Date(`${selectedEvent.date}T12:00:00+03:00`);
+      const shifted = new Date(sourceDate.getTime() + 24 * 60 * 60 * 1000);
+      const nextDate = `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, "0")}-${String(shifted.getDate()).padStart(2, "0")}`;
+
+      setManualCalendarEvents((prev) =>
+        prev.map((event) => (event.id === selectedEvent.id ? { ...event, date: nextDate } : event))
+      );
+      setTeacherActionNote(
+        `Занятие «${selectedEvent.title}» перенесено на ${formatEventDateLabel(nextDate)} ${selectedEvent.startTime}.`
       );
     }
 
@@ -904,6 +1039,8 @@ export function TeacherClassroomClient({
       </article>
     );
   };
+
+  const bulkActionUi = pendingBulkAction ? getBulkActionUi(pendingBulkAction) : null;
 
   return (
     <div className="space-y-6">
@@ -1093,7 +1230,7 @@ export function TeacherClassroomClient({
               </button>
               <button
                 type="button"
-                onClick={() => runBulkAction("confirm")}
+                onClick={() => openBulkActionConfirm("confirm")}
                 disabled={selectedSelectableCount === 0}
                 className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1101,7 +1238,7 @@ export function TeacherClassroomClient({
               </button>
               <button
                 type="button"
-                onClick={() => runBulkAction("propose")}
+                onClick={() => openBulkActionConfirm("propose")}
                 disabled={selectedSelectableCount === 0}
                 className="rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1109,7 +1246,7 @@ export function TeacherClassroomClient({
               </button>
               <button
                 type="button"
-                onClick={() => runBulkAction("decline")}
+                onClick={() => openBulkActionConfirm("decline")}
                 disabled={selectedSelectableCount === 0}
                 className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1300,6 +1437,90 @@ export function TeacherClassroomClient({
       ) : null}
 
       <Dialog.Root
+        open={isBulkConfirmOpen}
+        onOpenChange={(nextOpen) => {
+          setIsBulkConfirmOpen(nextOpen);
+          if (!nextOpen) {
+            setPendingBulkAction(null);
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[84] bg-slate-950/70" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-[85] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-border bg-white p-5 shadow-soft sm:p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <Dialog.Title className="text-lg font-semibold text-foreground">
+                  {bulkActionUi?.title ?? "Подтверждение действия"}
+                </Dialog.Title>
+                <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+                  Проверьте выбранные заявки и текст сообщения перед отправкой.
+                </Dialog.Description>
+              </div>
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-muted-foreground"
+                  aria-label="Закрыть окно подтверждения"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </Dialog.Close>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-border bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Выбрано заявок: {selectedActionableRequests.length}
+              </p>
+              {selectedActionableRequests.length === 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground">Нет заявок для обработки. Выберите заявки в очереди.</p>
+              ) : (
+                <ul className="mt-2 space-y-1.5 text-sm text-foreground">
+                  {selectedActionableRequests.slice(0, 6).map((request) => (
+                    <li key={request.id} className="rounded-xl border border-border bg-white px-3 py-2">
+                      {request.studentName ?? "Ученик"} · {request.subject} · {formatBookingSlotLabel(request.slot)}
+                    </li>
+                  ))}
+                  {selectedActionableRequests.length > 6 ? (
+                    <li className="text-xs text-muted-foreground">
+                      И еще {selectedActionableRequests.length - 6} заявок будут обработаны этим действием.
+                    </li>
+                  ) : null}
+                </ul>
+              )}
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-primary/20 bg-primary/5 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Текст сообщения ученику</p>
+              <p className="mt-1 text-sm text-foreground">{bulkActionPreviewMessage || "Сообщение будет сформировано автоматически."}</p>
+            </div>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="inline-flex rounded-full border border-border bg-white px-4 py-2 text-sm font-semibold text-foreground"
+                >
+                  Отмена
+                </button>
+              </Dialog.Close>
+              <button
+                type="button"
+                onClick={confirmBulkAction}
+                disabled={selectedActionableRequests.length === 0 || !pendingBulkAction}
+                className={cn(
+                  "inline-flex rounded-full px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50",
+                  bulkActionUi?.buttonClass ?? "bg-primary text-primary-foreground"
+                )}
+              >
+                {bulkActionUi?.button ?? "Подтвердить"}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root
         open={isEventModalOpen}
         onOpenChange={(nextOpen) => {
           setIsEventModalOpen(nextOpen);
@@ -1352,6 +1573,13 @@ export function TeacherClassroomClient({
                   Закрыть
                 </button>
               </Dialog.Close>
+              <button
+                type="button"
+                onClick={proposeCalendarEventReschedule}
+                className="inline-flex rounded-full border border-border bg-white px-4 py-2 text-sm font-semibold text-foreground"
+              >
+                Предложить перенос
+              </button>
               <button
                 type="button"
                 onClick={cancelCalendarEvent}
