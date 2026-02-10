@@ -13,6 +13,7 @@ import { ProgressBar } from "@/components/shared/ProgressBar";
 import { PillBadge } from "@/components/shared/PillBadge";
 import { StatCard } from "@/components/shared/StatCard";
 import { TeacherOnboardingAlert } from "@/components/teacher-cabinet/TeacherOnboardingAlert";
+import { TeacherOpsInbox } from "@/components/teacher-cabinet/TeacherOpsInbox";
 
 const monthNames = [
   "января",
@@ -110,6 +111,8 @@ export default function TeacherDashboardPage() {
         </article>
 
         <aside className="space-y-4">
+          <TeacherOpsInbox />
+
           <article className="rounded-3xl border border-border bg-white p-5 shadow-card">
             <h3 className="text-lg font-semibold text-foreground">План на сегодня</h3>
             <ul className="mt-3 space-y-2">

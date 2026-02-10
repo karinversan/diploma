@@ -24,6 +24,7 @@ import {
 import { BookingEvent, createBookingEvent, readBookingEvents } from "@/lib/booking-events";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { createRefundTicket } from "@/lib/refund-tickets";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
 const classroomTabs = [
@@ -35,8 +36,18 @@ const classroomTabs = [
 
 type ClassroomTabId = (typeof classroomTabs)[number]["id"];
 type CalendarMode = "week" | "month";
+type RequestStatusFilter = "all" | "pending" | "reschedule_proposed" | "awaiting_payment" | "paid" | "declined";
+type RequestAction = "confirm" | "propose" | "decline";
 
 const dayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const requestStatusFilterOptions: Array<{ value: RequestStatusFilter; label: string }> = [
+  { value: "all", label: "Все статусы" },
+  { value: "pending", label: "Новые заявки" },
+  { value: "reschedule_proposed", label: "Перенос предложен" },
+  { value: "awaiting_payment", label: "Ожидают оплату" },
+  { value: "paid", label: "Оплачено" },
+  { value: "declined", label: "Отклоненные" }
+];
 
 function parseEventMinutes(value: string) {
   const [hoursText, minutesText] = value.split(":");
@@ -115,6 +126,26 @@ function createStudentIdFallback(studentName: string | undefined, requestId: str
   return normalized ? `student-${normalized}` : `student-${requestId.slice(-6)}`;
 }
 
+function getRequestStatusMeta(status: LessonBookingRequest["status"]) {
+  if (status === "pending") {
+    return { label: "Новая заявка", className: "border-amber-300 bg-amber-50 text-amber-800" };
+  }
+  if (status === "reschedule_proposed") {
+    return { label: "Перенос предложен", className: "border-primary/30 bg-primary/10 text-primary" };
+  }
+  if (status === "awaiting_payment") {
+    return { label: "Ожидает оплату", className: "border-emerald-300 bg-emerald-50 text-emerald-800" };
+  }
+  if (status === "paid") {
+    return { label: "Оплачено", className: "border-emerald-300 bg-white text-emerald-700" };
+  }
+  return { label: "Отклонено", className: "border-rose-300 bg-rose-50 text-rose-700" };
+}
+
+function isActionableRequestStatus(status: LessonBookingRequest["status"]) {
+  return status === "pending" || status === "reschedule_proposed";
+}
+
 export function TeacherClassroomClient() {
   const [activeTab, setActiveTab] = useState<ClassroomTabId>("calendar");
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("week");
@@ -126,6 +157,8 @@ export function TeacherClassroomClient() {
   const [bookingRequests, setBookingRequests] = useState<LessonBookingRequest[]>([]);
   const [bookingEvents, setBookingEvents] = useState<BookingEvent[]>([]);
   const [teacherActionNote, setTeacherActionNote] = useState<string | null>(null);
+  const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>("all");
+  const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
 
   const weekDays = useMemo(() => createWeekDays(anchorDate), [anchorDate]);
 
@@ -143,13 +176,16 @@ export function TeacherClassroomClient() {
   useEffect(() => {
     setBookingRequests(readLessonBookings());
     setBookingEvents(readBookingEvents());
-    const syncBookings = () => setBookingRequests(readLessonBookings());
     const syncAll = () => {
       setBookingRequests(readLessonBookings());
       setBookingEvents(readBookingEvents());
     };
     window.addEventListener("storage", syncAll);
-    return () => window.removeEventListener("storage", syncAll);
+    window.addEventListener(STORAGE_SYNC_EVENT, syncAll);
+    return () => {
+      window.removeEventListener("storage", syncAll);
+      window.removeEventListener(STORAGE_SYNC_EVENT, syncAll);
+    };
   }, []);
 
   const requestsForTeacher = useMemo(
@@ -179,6 +215,42 @@ export function TeacherClassroomClient() {
   const proposedRequests = requestsForTeacher.filter((request) => request.status === "reschedule_proposed");
   const awaitingPaymentRequests = requestsForTeacher.filter((request) => request.status === "awaiting_payment");
   const paidRequests = requestsForTeacher.filter((request) => request.status === "paid");
+  const declinedRequests = requestsForTeacher.filter((request) => request.status === "declined");
+
+  const requestQueue = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return requestsForTeacher.filter((request) => {
+      const byStatus = requestStatusFilter === "all" ? true : request.status === requestStatusFilter;
+      if (!byStatus) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return [request.subject, request.studentName ?? "Ученик", request.slot, request.status]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [requestStatusFilter, requestsForTeacher, searchQuery]);
+
+  const selectableQueueRequestIds = useMemo(() => {
+    return requestQueue
+      .filter((request) => request.status === "pending" || request.status === "reschedule_proposed")
+      .map((request) => request.id);
+  }, [requestQueue]);
+
+  const selectableQueueSet = useMemo(() => new Set(selectableQueueRequestIds), [selectableQueueRequestIds]);
+  const selectedSelectableCount = selectedRequestIds.filter((id) => selectableQueueSet.has(id)).length;
+  const allSelectableSelected = selectableQueueRequestIds.length > 0 && selectedSelectableCount === selectableQueueRequestIds.length;
+
+  useEffect(() => {
+    const allowedIds = new Set(requestsForTeacher.map((request) => request.id));
+    setSelectedRequestIds((prev) => prev.filter((id) => allowedIds.has(id)));
+  }, [requestsForTeacher]);
 
   const paidRequestEvents = useMemo(() => {
     return paidRequests.map<ClassroomEvent>((request) => {
@@ -319,64 +391,83 @@ export function TeacherClassroomClient() {
   const resolveRequestStudentId = (request: LessonBookingRequest) =>
     request.studentId ??
     (request.studentName === studentProfile.name ? studentProfile.id : createStudentIdFallback(request.studentName, request.id));
+  const applyRequestAction = (
+    request: LessonBookingRequest,
+    action: RequestAction,
+    options?: { silentNote?: boolean; skipStateSync?: boolean }
+  ) => {
+    if (action === "confirm") {
+      const teacherMessage = "Слот подтвержден. Для фиксации в расписании ученик должен оплатить занятие.";
+      const next = updateLessonBooking(request.id, {
+        status: "awaiting_payment",
+        teacherMessage,
+        proposedSlot: undefined
+      });
+      if (!options?.skipStateSync) {
+        setBookingRequests(next);
+      }
+      createBookingEvent({
+        bookingId: request.id,
+        actor: "teacher",
+        action: "teacher_approved",
+        title: "Слот подтвержден преподавателем",
+        description: "Ученик может перейти к оплате занятия."
+      });
+      if (!options?.skipStateSync) {
+        setBookingEvents(readBookingEvents());
+      }
+      notifyStudentByChat(
+        request,
+        `Подтвердил(а) ваш слот ${formatBookingSlotLabel(request.slot)}. Следующий шаг: оплата в разделе «Платежи».`
+      );
+      if (!options?.silentNote) {
+        setTeacherActionNote(
+          `Заявка на ${formatBookingSlotLabel(request.slot)} подтверждена. Теперь ученик увидит кнопку оплаты в разделе «Занятия».`
+        );
+      }
+      return;
+    }
 
-  const confirmRequest = (request: LessonBookingRequest) => {
-    const teacherMessage = "Слот подтвержден. Для фиксации в расписании ученик должен оплатить занятие.";
-    const next = updateLessonBooking(request.id, {
-      status: "awaiting_payment",
-      teacherMessage,
-      proposedSlot: undefined
-    });
-    setBookingRequests(next);
-    createBookingEvent({
-      bookingId: request.id,
-      actor: "teacher",
-      action: "teacher_approved",
-      title: "Слот подтвержден преподавателем",
-      description: "Ученик может перейти к оплате занятия."
-    });
-    setBookingEvents(readBookingEvents());
-    notifyStudentByChat(
-      request,
-      `Подтвердил(а) ваш слот ${formatBookingSlotLabel(request.slot)}. Следующий шаг: оплата в разделе «Платежи».`
-    );
-    setTeacherActionNote(
-      `Заявка на ${formatBookingSlotLabel(request.slot)} подтверждена. Теперь ученик увидит кнопку оплаты в разделе «Занятия».`
-    );
-  };
+    if (action === "propose") {
+      const sourceDate = new Date(request.startAt);
+      const proposedDate = new Date(sourceDate.getTime() + 24 * 60 * 60 * 1000);
+      const datePart = `${proposedDate.getFullYear()}-${String(proposedDate.getMonth() + 1).padStart(2, "0")}-${String(proposedDate.getDate()).padStart(2, "0")}`;
+      const timePart = `${String(sourceDate.getHours()).padStart(2, "0")}:${String(sourceDate.getMinutes()).padStart(2, "0")}`;
+      const proposedSlot = `${datePart} ${timePart}`;
 
-  const proposeNewTime = (request: LessonBookingRequest) => {
-    const sourceDate = new Date(request.startAt);
-    const proposedDate = new Date(sourceDate.getTime() + 24 * 60 * 60 * 1000);
-    const datePart = `${proposedDate.getFullYear()}-${String(proposedDate.getMonth() + 1).padStart(2, "0")}-${String(proposedDate.getDate()).padStart(2, "0")}`;
-    const timePart = `${String(sourceDate.getHours()).padStart(2, "0")}:${String(sourceDate.getMinutes()).padStart(2, "0")}`;
-    const proposedSlot = `${datePart} ${timePart}`;
+      const next = updateLessonBooking(request.id, {
+        status: "reschedule_proposed",
+        proposedSlot,
+        teacherMessage: `Предлагаю перенос на ${formatBookingSlotLabel(proposedSlot)}.`
+      });
+      if (!options?.skipStateSync) {
+        setBookingRequests(next);
+      }
+      createBookingEvent({
+        bookingId: request.id,
+        actor: "teacher",
+        action: "teacher_reschedule_proposed",
+        title: "Предложен перенос",
+        description: `Новый слот: ${formatBookingSlotLabel(proposedSlot)}.`
+      });
+      if (!options?.skipStateSync) {
+        setBookingEvents(readBookingEvents());
+      }
+      notifyStudentByChat(request, `Предлагаю перенести занятие на ${formatBookingSlotLabel(proposedSlot)}. Подтвердите перенос в разделе «Занятия».`);
+      if (!options?.silentNote) {
+        setTeacherActionNote(`По заявке отправлен перенос на ${formatBookingSlotLabel(proposedSlot)}.`);
+      }
+      return;
+    }
 
-    const next = updateLessonBooking(request.id, {
-      status: "reschedule_proposed",
-      proposedSlot,
-      teacherMessage: `Предлагаю перенос на ${formatBookingSlotLabel(proposedSlot)}.`
-    });
-    setBookingRequests(next);
-    createBookingEvent({
-      bookingId: request.id,
-      actor: "teacher",
-      action: "teacher_reschedule_proposed",
-      title: "Предложен перенос",
-      description: `Новый слот: ${formatBookingSlotLabel(proposedSlot)}.`
-    });
-    setBookingEvents(readBookingEvents());
-    notifyStudentByChat(request, `Предлагаю перенести занятие на ${formatBookingSlotLabel(proposedSlot)}. Подтвердите перенос в разделе «Занятия».`);
-    setTeacherActionNote(`По заявке отправлен перенос на ${formatBookingSlotLabel(proposedSlot)}.`);
-  };
-
-  const declineRequest = (request: LessonBookingRequest) => {
     const teacherMessage = "Слот уже недоступен. Выберите, пожалуйста, другой вариант времени.";
     const next = updateLessonBooking(request.id, {
       status: "declined",
       teacherMessage
     });
-    setBookingRequests(next);
+    if (!options?.skipStateSync) {
+      setBookingRequests(next);
+    }
     createBookingEvent({
       bookingId: request.id,
       actor: "teacher",
@@ -384,9 +475,55 @@ export function TeacherClassroomClient() {
       title: "Заявка отклонена преподавателем",
       description: teacherMessage
     });
-    setBookingEvents(readBookingEvents());
+    if (!options?.skipStateSync) {
+      setBookingEvents(readBookingEvents());
+    }
     notifyStudentByChat(request, "К сожалению, выбранный слот недоступен. Пожалуйста, выберите другое время.");
-    setTeacherActionNote("Заявка отклонена с комментарием преподавателя.");
+    if (!options?.silentNote) {
+      setTeacherActionNote("Заявка отклонена с комментарием преподавателя.");
+    }
+  };
+
+  const confirmRequest = (request: LessonBookingRequest) => applyRequestAction(request, "confirm");
+  const proposeNewTime = (request: LessonBookingRequest) => applyRequestAction(request, "propose");
+  const declineRequest = (request: LessonBookingRequest) => applyRequestAction(request, "decline");
+
+  const toggleRequestSelection = (requestId: string) => {
+    setSelectedRequestIds((prev) => (prev.includes(requestId) ? prev.filter((id) => id !== requestId) : [...prev, requestId]));
+  };
+
+  const toggleSelectAllQueue = () => {
+    if (allSelectableSelected) {
+      setSelectedRequestIds((prev) => prev.filter((id) => !selectableQueueSet.has(id)));
+      return;
+    }
+
+    setSelectedRequestIds((prev) => Array.from(new Set([...prev, ...selectableQueueRequestIds])));
+  };
+
+  const runBulkAction = (action: RequestAction) => {
+    const selectedRequests = requestQueue.filter((request) => selectedRequestIds.includes(request.id));
+    const actionableRequests = selectedRequests.filter((request) => isActionableRequestStatus(request.status));
+
+    if (actionableRequests.length === 0) {
+      return;
+    }
+
+    for (const request of actionableRequests) {
+      applyRequestAction(request, action, { silentNote: true, skipStateSync: true });
+    }
+
+    setBookingRequests(readLessonBookings());
+    setBookingEvents(readBookingEvents());
+    setSelectedRequestIds((prev) => prev.filter((id) => !actionableRequests.some((request) => request.id === id)));
+
+    if (action === "confirm") {
+      setTeacherActionNote(`Массовое действие: подтверждено ${actionableRequests.length} заявок.`);
+    } else if (action === "propose") {
+      setTeacherActionNote(`Массовое действие: отправлен перенос для ${actionableRequests.length} заявок.`);
+    } else {
+      setTeacherActionNote(`Массовое действие: отклонено ${actionableRequests.length} заявок.`);
+    }
   };
 
   const selectedEventCourse = useMemo(() => {
@@ -589,6 +726,7 @@ export function TeacherClassroomClient() {
                 <p>Ожидают ответа ученика: {proposedRequests.length}</p>
                 <p>Ожидают оплату: {awaitingPaymentRequests.length}</p>
                 <p>Оплачено: {paidRequests.length}</p>
+                <p>Отклонено: {declinedRequests.length}</p>
               </div>
             </div>
 
@@ -598,37 +736,98 @@ export function TeacherClassroomClient() {
               </div>
             ) : null}
 
-            {pendingRequests.length === 0 &&
-            proposedRequests.length === 0 &&
-            awaitingPaymentRequests.length === 0 &&
-            paidRequests.length === 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-primary/20 bg-white p-2">
+              <select
+                value={requestStatusFilter}
+                onChange={(event) => setRequestStatusFilter(event.target.value as RequestStatusFilter)}
+                className="rounded-xl border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground outline-none focus:border-primary"
+                aria-label="Фильтр заявок по статусу"
+              >
+                {requestStatusFilterOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={toggleSelectAllQueue}
+                disabled={selectableQueueRequestIds.length === 0}
+                className="rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {allSelectableSelected ? "Снять выделение" : "Выбрать активные"}
+              </button>
+              <button
+                type="button"
+                onClick={() => runBulkAction("confirm")}
+                disabled={selectedSelectableCount === 0}
+                className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Подтвердить выбранные
+              </button>
+              <button
+                type="button"
+                onClick={() => runBulkAction("propose")}
+                disabled={selectedSelectableCount === 0}
+                className="rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Перенести выбранные
+              </button>
+              <button
+                type="button"
+                onClick={() => runBulkAction("decline")}
+                disabled={selectedSelectableCount === 0}
+                className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Отклонить выбранные
+              </button>
+              <span className="ml-auto text-[11px] text-muted-foreground">Выделено: {selectedSelectableCount}</span>
+            </div>
+
+            {requestQueue.length === 0 ? (
               <p className="mt-3 rounded-xl border border-dashed border-primary/30 bg-white/80 px-3 py-2 text-sm text-muted-foreground">
-                Сейчас нет новых заявок. Когда ученик отправит запрос на слот, он появится здесь.
+                По текущим фильтрам заявок нет. Измените статусный фильтр или строку поиска.
               </p>
             ) : (
               <div className="mt-3 space-y-2">
-                {[...pendingRequests, ...proposedRequests, ...awaitingPaymentRequests].slice(0, 6).map((request) => (
-                  <article key={request.id} className="rounded-xl border border-primary/20 bg-white p-3">
+                {requestQueue.slice(0, 8).map((request) => {
+                  const statusMeta = getRequestStatusMeta(request.status);
+                  const actionable = isActionableRequestStatus(request.status);
+                  const isSelected = selectedRequestIds.includes(request.id);
+
+                  return (
+                  <article
+                    key={request.id}
+                    className={cn(
+                      "rounded-xl border p-3",
+                      request.status === "paid"
+                        ? "border-emerald-200 bg-emerald-50"
+                        : request.status === "declined"
+                          ? "border-rose-200 bg-rose-50"
+                          : "border-primary/20 bg-white"
+                    )}
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-semibold text-foreground">
                         {request.subject} · {request.studentName ?? "Ученик"}
                       </p>
-                      <span
-                        className={cn(
-                          "rounded-full border px-2 py-0.5 text-xs font-semibold",
-                          request.status === "pending"
-                            ? "border-amber-300 bg-amber-50 text-amber-800"
-                            : request.status === "reschedule_proposed"
-                              ? "border-primary/30 bg-primary/10 text-primary"
-                              : "border-emerald-300 bg-emerald-50 text-emerald-800"
-                        )}
-                      >
-                        {request.status === "pending"
-                          ? "Новая заявка"
-                          : request.status === "reschedule_proposed"
-                            ? "Перенос предложен"
-                            : "Ожидает оплату"}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {actionable ? (
+                          <label className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-2 py-0.5 text-xs font-semibold text-foreground">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleRequestSelection(request.id)}
+                              className="h-3.5 w-3.5 accent-primary"
+                            />
+                            В очередь
+                          </label>
+                        ) : null}
+                        <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", statusMeta.className)}>
+                          {statusMeta.label}
+                        </span>
+                      </div>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Текущий слот: {formatBookingSlotLabel(request.slot)}
@@ -663,7 +862,7 @@ export function TeacherClassroomClient() {
                           Открыть чат
                         </Link>
                       </div>
-                    ) : (
+                    ) : actionable ? (
                       <div className="mt-2 flex flex-wrap gap-2">
                         <button
                           type="button"
@@ -693,33 +892,24 @@ export function TeacherClassroomClient() {
                           Открыть чат
                         </Link>
                       </div>
+                    ) : (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Link
+                          href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(request))}`}
+                          className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
+                        >
+                          Написать ученику
+                        </Link>
+                      </div>
                     )}
                   </article>
-                ))}
+                )})}
 
-                {paidRequests.slice(0, 3).map((request) => (
-                  <article key={request.id} className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-foreground">
-                        {request.subject} · {request.studentName ?? "Ученик"}
-                      </p>
-                      <span className="rounded-full border border-emerald-300 bg-white px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                        Оплачено
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-emerald-800">
-                      {formatBookingSlotLabel(request.slot)} · занятие добавлено в календарь преподавателя.
-                    </p>
-                    <div className="mt-2">
-                      <Link
-                        href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(request))}`}
-                        className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
-                      >
-                        Написать ученику
-                      </Link>
-                    </div>
-                  </article>
-                ))}
+                {requestQueue.length > 8 ? (
+                  <p className="rounded-xl border border-dashed border-border bg-white px-3 py-2 text-xs text-muted-foreground">
+                    Показаны первые 8 заявок. Уточните фильтр или поиск для точечной обработки.
+                  </p>
+                ) : null}
               </div>
             )}
           </div>
