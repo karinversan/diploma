@@ -18,11 +18,15 @@ import { getTeacherById } from "@/data/teachers";
 import {
   formatBookingSlotLabel,
   LessonBookingRequest,
-  readLessonBookings,
-  updateLessonBooking
+  readLessonBookings
 } from "@/lib/lesson-bookings";
-import { BookingEvent, createBookingEvent, readBookingEvents } from "@/lib/booking-events";
-import { syncBookingEventsFromApi, syncBookingsFromApi } from "@/lib/api/bookings-client";
+import { BookingEvent, readBookingEvents } from "@/lib/booking-events";
+import {
+  createBookingEventViaApi,
+  syncBookingEventsFromApi,
+  syncBookingsFromApi,
+  updateBookingViaApi
+} from "@/lib/api/bookings-client";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { createRefundTicket } from "@/lib/refund-tickets";
 import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
@@ -882,7 +886,7 @@ export function TeacherClassroomClient({
   const resolveRequestStudentId = (request: LessonBookingRequest) =>
     request.studentId ??
     (request.studentName === studentProfile.name ? studentProfile.id : createStudentIdFallback(request.studentName, request.id));
-  const applyRequestAction = (
+  const applyRequestAction = async (
     request: LessonBookingRequest,
     action: RequestAction,
     options?: { silentNote?: boolean; skipStateSync?: boolean; tone?: MessageTone; customMessage?: string }
@@ -890,7 +894,82 @@ export function TeacherClassroomClient({
     const tone = options?.tone ?? messageTone;
     const customMessage = options?.customMessage?.trim();
 
-    if (action === "confirm") {
+    try {
+      if (action === "confirm") {
+        const teacherMessage =
+          customMessage ??
+          buildTeacherActionMessage({
+            action,
+            request,
+            tone
+          });
+        const next = await updateBookingViaApi(request.id, {
+          status: "awaiting_payment",
+          teacherMessage,
+          proposedSlot: undefined
+        });
+        if (!options?.skipStateSync) {
+          setBookingRequests(next);
+        }
+        await createBookingEventViaApi({
+          bookingId: request.id,
+          actor: "teacher",
+          action: "teacher_approved",
+          title: "Слот подтвержден преподавателем",
+          description: "Ученик может перейти к оплате занятия."
+        });
+        if (!options?.skipStateSync) {
+          setBookingEvents(await syncBookingEventsFromApi());
+        }
+        notifyStudentByChat(request, teacherMessage);
+        if (!options?.silentNote) {
+          setTeacherActionNote(
+            `Заявка на ${formatBookingSlotLabel(request.slot)} подтверждена. Теперь ученик увидит кнопку оплаты в разделе «Занятия».`
+          );
+        }
+        return true;
+      }
+
+      if (action === "propose") {
+        const sourceDate = new Date(request.startAt);
+        const proposedDate = new Date(sourceDate.getTime() + 24 * 60 * 60 * 1000);
+        const datePart = `${proposedDate.getFullYear()}-${String(proposedDate.getMonth() + 1).padStart(2, "0")}-${String(proposedDate.getDate()).padStart(2, "0")}`;
+        const timePart = `${String(sourceDate.getHours()).padStart(2, "0")}:${String(sourceDate.getMinutes()).padStart(2, "0")}`;
+        const proposedSlot = `${datePart} ${timePart}`;
+        const teacherMessage =
+          customMessage ??
+          buildTeacherActionMessage({
+            action,
+            request,
+            tone,
+            proposedSlot
+          });
+
+        const next = await updateBookingViaApi(request.id, {
+          status: "reschedule_proposed",
+          proposedSlot,
+          teacherMessage
+        });
+        if (!options?.skipStateSync) {
+          setBookingRequests(next);
+        }
+        await createBookingEventViaApi({
+          bookingId: request.id,
+          actor: "teacher",
+          action: "teacher_reschedule_proposed",
+          title: "Предложен перенос",
+          description: `Новый слот: ${formatBookingSlotLabel(proposedSlot)}.`
+        });
+        if (!options?.skipStateSync) {
+          setBookingEvents(await syncBookingEventsFromApi());
+        }
+        notifyStudentByChat(request, teacherMessage);
+        if (!options?.silentNote) {
+          setTeacherActionNote(`По заявке отправлен перенос на ${formatBookingSlotLabel(proposedSlot)}.`);
+        }
+        return true;
+      }
+
       const teacherMessage =
         customMessage ??
         buildTeacherActionMessage({
@@ -898,100 +977,33 @@ export function TeacherClassroomClient({
           request,
           tone
         });
-      const next = updateLessonBooking(request.id, {
-        status: "awaiting_payment",
-        teacherMessage,
-        proposedSlot: undefined
-      });
-      if (!options?.skipStateSync) {
-        setBookingRequests(next);
-      }
-      createBookingEvent({
-        bookingId: request.id,
-        actor: "teacher",
-        action: "teacher_approved",
-        title: "Слот подтвержден преподавателем",
-        description: "Ученик может перейти к оплате занятия."
-      });
-      if (!options?.skipStateSync) {
-        setBookingEvents(readBookingEvents());
-      }
-      notifyStudentByChat(request, teacherMessage);
-      if (!options?.silentNote) {
-        setTeacherActionNote(
-          `Заявка на ${formatBookingSlotLabel(request.slot)} подтверждена. Теперь ученик увидит кнопку оплаты в разделе «Занятия».`
-        );
-      }
-      return;
-    }
-
-    if (action === "propose") {
-      const sourceDate = new Date(request.startAt);
-      const proposedDate = new Date(sourceDate.getTime() + 24 * 60 * 60 * 1000);
-      const datePart = `${proposedDate.getFullYear()}-${String(proposedDate.getMonth() + 1).padStart(2, "0")}-${String(proposedDate.getDate()).padStart(2, "0")}`;
-      const timePart = `${String(sourceDate.getHours()).padStart(2, "0")}:${String(sourceDate.getMinutes()).padStart(2, "0")}`;
-      const proposedSlot = `${datePart} ${timePart}`;
-      const teacherMessage =
-        customMessage ??
-        buildTeacherActionMessage({
-          action,
-          request,
-          tone,
-          proposedSlot
-        });
-
-      const next = updateLessonBooking(request.id, {
-        status: "reschedule_proposed",
-        proposedSlot,
+      const next = await updateBookingViaApi(request.id, {
+        status: "declined",
         teacherMessage
       });
       if (!options?.skipStateSync) {
         setBookingRequests(next);
       }
-      createBookingEvent({
+      await createBookingEventViaApi({
         bookingId: request.id,
         actor: "teacher",
-        action: "teacher_reschedule_proposed",
-        title: "Предложен перенос",
-        description: `Новый слот: ${formatBookingSlotLabel(proposedSlot)}.`
+        action: "teacher_declined",
+        title: "Заявка отклонена преподавателем",
+        description: teacherMessage
       });
       if (!options?.skipStateSync) {
-        setBookingEvents(readBookingEvents());
+        setBookingEvents(await syncBookingEventsFromApi());
       }
       notifyStudentByChat(request, teacherMessage);
       if (!options?.silentNote) {
-        setTeacherActionNote(`По заявке отправлен перенос на ${formatBookingSlotLabel(proposedSlot)}.`);
+        setTeacherActionNote("Заявка отклонена с комментарием преподавателя.");
       }
-      return;
-    }
-
-    const teacherMessage =
-      customMessage ??
-      buildTeacherActionMessage({
-        action,
-        request,
-        tone
-      });
-    const next = updateLessonBooking(request.id, {
-      status: "declined",
-      teacherMessage
-    });
-    if (!options?.skipStateSync) {
-      setBookingRequests(next);
-    }
-    createBookingEvent({
-      bookingId: request.id,
-      actor: "teacher",
-      action: "teacher_declined",
-      title: "Заявка отклонена преподавателем",
-      description: teacherMessage
-    });
-    if (!options?.skipStateSync) {
-      setBookingEvents(readBookingEvents());
-    }
-    notifyStudentByChat(request, teacherMessage);
-    if (!options?.silentNote) {
-      setTeacherActionNote("Заявка отклонена с комментарием преподавателя.");
+      return true;
+    } catch {
+      if (!options?.silentNote) {
+        setTeacherActionNote("Не удалось применить действие. Проверьте соединение и повторите.");
+      }
+      return false;
     }
   };
 
@@ -1000,28 +1012,31 @@ export function TeacherClassroomClient({
     return normalized.length > 0 ? normalized : undefined;
   };
 
-  const confirmRequest = (request: LessonBookingRequest, customMessageOverride?: string) => {
+  const confirmRequest = async (request: LessonBookingRequest, customMessageOverride?: string) => {
     const customMessage = customMessageOverride ?? consumeCustomMessage();
-    applyRequestAction(request, "confirm", { tone: messageTone, customMessage });
-    if (!customMessageOverride && customMessage) {
+    const success = await applyRequestAction(request, "confirm", { tone: messageTone, customMessage });
+    if (success && !customMessageOverride && customMessage) {
       setTeacherMessageDraft("");
     }
+    return success;
   };
 
-  const proposeNewTime = (request: LessonBookingRequest, customMessageOverride?: string) => {
+  const proposeNewTime = async (request: LessonBookingRequest, customMessageOverride?: string) => {
     const customMessage = customMessageOverride ?? consumeCustomMessage();
-    applyRequestAction(request, "propose", { tone: messageTone, customMessage });
-    if (!customMessageOverride && customMessage) {
+    const success = await applyRequestAction(request, "propose", { tone: messageTone, customMessage });
+    if (success && !customMessageOverride && customMessage) {
       setTeacherMessageDraft("");
     }
+    return success;
   };
 
-  const declineRequest = (request: LessonBookingRequest, customMessageOverride?: string) => {
+  const declineRequest = async (request: LessonBookingRequest, customMessageOverride?: string) => {
     const customMessage = customMessageOverride ?? consumeCustomMessage();
-    applyRequestAction(request, "decline", { tone: messageTone, customMessage });
-    if (!customMessageOverride && customMessage) {
+    const success = await applyRequestAction(request, "decline", { tone: messageTone, customMessage });
+    if (success && !customMessageOverride && customMessage) {
       setTeacherMessageDraft("");
     }
+    return success;
   };
 
   const toggleRequestSelection = (requestId: string) => {
@@ -1037,7 +1052,7 @@ export function TeacherClassroomClient({
     setSelectedRequestIds((prev) => Array.from(new Set([...prev, ...selectableQueueRequestIds])));
   };
 
-  const runBulkAction = (action: RequestAction) => {
+  const runBulkAction = async (action: RequestAction) => {
     const selectedRequests = requestQueue.filter((request) => selectedRequestIds.includes(request.id));
     const actionableRequests = selectedRequests.filter((request) => isActionableRequestStatus(request.status));
     const customMessage = consumeCustomMessage();
@@ -1046,28 +1061,38 @@ export function TeacherClassroomClient({
       return;
     }
 
+    let successCount = 0;
     for (const request of actionableRequests) {
-      applyRequestAction(request, action, {
+      const success = await applyRequestAction(request, action, {
         silentNote: true,
         skipStateSync: true,
         tone: messageTone,
         customMessage
       });
+      if (success) {
+        successCount += 1;
+      }
     }
 
-    setBookingRequests(readLessonBookings());
-    setBookingEvents(readBookingEvents());
+    const [nextBookings, nextEvents] = await Promise.all([syncBookingsFromApi(), syncBookingEventsFromApi()]);
+    setBookingRequests(nextBookings);
+    setBookingEvents(nextEvents);
     setSelectedRequestIds((prev) => prev.filter((id) => !actionableRequests.some((request) => request.id === id)));
-    if (customMessage) {
+    if (customMessage && successCount > 0) {
       setTeacherMessageDraft("");
     }
 
+    if (successCount === 0) {
+      setTeacherActionNote("Массовое действие не выполнено. Проверьте соединение и повторите.");
+      return;
+    }
+
     if (action === "confirm") {
-      setTeacherActionNote(`Массовое действие: подтверждено ${actionableRequests.length} заявок.`);
+      setTeacherActionNote(`Массовое действие: подтверждено ${successCount} заявок.`);
     } else if (action === "propose") {
-      setTeacherActionNote(`Массовое действие: отправлен перенос для ${actionableRequests.length} заявок.`);
+      setTeacherActionNote(`Массовое действие: отправлен перенос для ${successCount} заявок.`);
     } else {
-      setTeacherActionNote(`Массовое действие: отклонено ${actionableRequests.length} заявок.`);
+      setTeacherActionNote(`Массовое действие: отклонено ${successCount} заявок.`);
     }
   };
 
@@ -1153,11 +1178,11 @@ export function TeacherClassroomClient({
     });
   }, [messageTone, pendingBulkAction, selectedActionableRequests, teacherMessageDraft]);
 
-  const confirmBulkAction = () => {
+  const confirmBulkAction = async () => {
     if (!pendingBulkAction) {
       return;
     }
-    runBulkAction(pendingBulkAction);
+    await runBulkAction(pendingBulkAction);
     setIsBulkConfirmOpen(false);
     setPendingBulkAction(null);
   };
@@ -1179,7 +1204,7 @@ export function TeacherClassroomClient({
       .replace(/^[A-Za-zА-Яа-яЁё]/, (first) => first.toUpperCase());
   };
 
-  const cancelCalendarEvent = () => {
+  const cancelCalendarEvent = async () => {
     if (!selectedEvent) {
       return;
     }
@@ -1197,7 +1222,7 @@ export function TeacherClassroomClient({
           reason: "Отмена оплаченного занятия преподавателем"
         });
 
-        createBookingEvent({
+        await createBookingEventViaApi({
           bookingId: relatedBooking.id,
           actor: "system",
           action: "refund_created",
@@ -1209,20 +1234,20 @@ export function TeacherClassroomClient({
         });
       }
 
-      const next = updateLessonBooking(bookingId, {
+      const next = await updateBookingViaApi(bookingId, {
         status: "cancelled",
         teacherMessage:
           "Занятие отменено преподавателем. Мы создали заявку на возврат, статус будет виден в разделе «Платежи»."
       });
       setBookingRequests(next);
-      createBookingEvent({
+      await createBookingEventViaApi({
         bookingId,
         actor: "teacher",
         action: "teacher_cancelled",
         title: "Занятие отменено преподавателем",
         description: "Ученик получил уведомление об отмене и инструкции по возврату."
       });
-      setBookingEvents(readBookingEvents());
+      setBookingEvents(await syncBookingEventsFromApi());
       if (relatedBooking) {
         notifyStudentByChat(
           relatedBooking,
@@ -1243,7 +1268,7 @@ export function TeacherClassroomClient({
     setSelectedEvent(null);
   };
 
-  const proposeCalendarEventReschedule = () => {
+  const proposeCalendarEventReschedule = async () => {
     if (!selectedEvent) {
       return;
     }
@@ -1264,20 +1289,20 @@ export function TeacherClassroomClient({
         proposedSlot
       });
 
-      const next = updateLessonBooking(bookingId, {
+      const next = await updateBookingViaApi(bookingId, {
         status: "reschedule_proposed",
         proposedSlot,
         teacherMessage
       });
       setBookingRequests(next);
-      createBookingEvent({
+      await createBookingEventViaApi({
         bookingId,
         actor: "teacher",
         action: "teacher_reschedule_proposed",
         title: "Перенос предложен преподавателем",
         description: `Новый слот: ${formatBookingSlotLabel(proposedSlot)}.`
       });
-      setBookingEvents(readBookingEvents());
+      setBookingEvents(await syncBookingEventsFromApi());
       notifyStudentByChat(relatedBooking, teacherMessage);
       setTeacherActionNote(
         `Для занятия ${formatEventDateLabel(selectedEvent.date)} ${selectedEvent.startTime} предложен перенос на ${formatBookingSlotLabel(proposedSlot)}.`
@@ -1352,7 +1377,7 @@ export function TeacherClassroomClient({
     ];
   }, [drawerAction, focusedRequest, messageTone]);
 
-  const executeDrawerAction = () => {
+  const executeDrawerAction = async () => {
     if (!focusedRequest) {
       return;
     }
@@ -1368,12 +1393,17 @@ export function TeacherClassroomClient({
         ? drawerNavigationList[focusedRequestIndex + 1]?.id ?? drawerNavigationList[focusedRequestIndex - 1]?.id ?? null
         : null;
 
+    let success = false;
     if (drawerAction === "confirm") {
-      confirmRequest(focusedRequest, customMessage);
+      success = await confirmRequest(focusedRequest, customMessage);
     } else if (drawerAction === "propose") {
-      proposeNewTime(focusedRequest, customMessage);
+      success = await proposeNewTime(focusedRequest, customMessage);
     } else {
-      declineRequest(focusedRequest, customMessage);
+      success = await declineRequest(focusedRequest, customMessage);
+    }
+
+    if (!success) {
+      return;
     }
 
     if (nextRequestId) {

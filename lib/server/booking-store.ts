@@ -4,7 +4,9 @@ import path from "node:path";
 import type { BookingEvent } from "@/lib/booking-events";
 import type { LessonBookingRequest } from "@/lib/lesson-bookings";
 
-const STORE_PATH = path.join("/tmp", "skillzone-booking-store-v1.json");
+function resolveStorePath() {
+  return process.env.SKILLZONE_BOOKING_STORE_PATH || path.join("/tmp", "skillzone-booking-store-v1.json");
+}
 
 type BookingStore = {
   bookings: LessonBookingRequest[];
@@ -39,18 +41,20 @@ function sortEvents(events: BookingEvent[]) {
 }
 
 async function ensureStoreFile() {
+  const storePath = resolveStorePath();
   try {
-    await fs.access(STORE_PATH);
+    await fs.access(storePath);
   } catch {
-    await fs.writeFile(STORE_PATH, JSON.stringify(fallbackStore(), null, 2), "utf-8");
+    await fs.writeFile(storePath, JSON.stringify(fallbackStore(), null, 2), "utf-8");
   }
 }
 
 async function readStore(): Promise<BookingStore> {
+  const storePath = resolveStorePath();
   await ensureStoreFile();
 
   try {
-    const raw = await fs.readFile(STORE_PATH, "utf-8");
+    const raw = await fs.readFile(storePath, "utf-8");
     const parsed = JSON.parse(raw) as Partial<BookingStore>;
     return {
       bookings: Array.isArray(parsed.bookings) ? sortBookings(parsed.bookings) : [],
@@ -62,11 +66,12 @@ async function readStore(): Promise<BookingStore> {
 }
 
 async function writeStore(store: BookingStore) {
+  const storePath = resolveStorePath();
   const normalized: BookingStore = {
     bookings: sortBookings(store.bookings),
     bookingEvents: sortEvents(store.bookingEvents)
   };
-  await fs.writeFile(STORE_PATH, JSON.stringify(normalized, null, 2), "utf-8");
+  await fs.writeFile(storePath, JSON.stringify(normalized, null, 2), "utf-8");
   return normalized;
 }
 
@@ -132,4 +137,3 @@ export async function appendBookingEvent(payload: CreateBookingEventPayload) {
   const next = await writeStore(store);
   return { events: next.bookingEvents, item };
 }
-
