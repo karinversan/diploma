@@ -293,6 +293,207 @@ function buildDefaultMessageForAction(request: LessonBookingRequest, action: Req
   });
 }
 
+type RequestUrgency = "critical" | "today" | "soon" | "normal";
+type RequestSlaLevel = "ok" | "risk" | "breach";
+
+function getRequestStartMs(request: LessonBookingRequest) {
+  const direct = new Date(request.startAt).getTime();
+  if (!Number.isNaN(direct)) {
+    return direct;
+  }
+
+  const slotMatch = request.slot.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
+  if (slotMatch) {
+    const slotDate = new Date(`${slotMatch[1]}T${slotMatch[2]}:00+03:00`).getTime();
+    if (!Number.isNaN(slotDate)) {
+      return slotDate;
+    }
+  }
+
+  return Date.now() + 48 * 60 * 60 * 1000;
+}
+
+function getRequestMinutesToStart(request: LessonBookingRequest, nowMs = Date.now()) {
+  const startMs = getRequestStartMs(request);
+  return Math.round((startMs - nowMs) / (1000 * 60));
+}
+
+function formatDurationRu(totalMinutes: number) {
+  const safeMinutes = Math.max(1, totalMinutes);
+  const days = Math.floor(safeMinutes / (60 * 24));
+  const hours = Math.floor((safeMinutes % (60 * 24)) / 60);
+  const minutes = safeMinutes % 60;
+
+  const parts: string[] = [];
+  if (days > 0) {
+    parts.push(`${days} д`);
+  }
+  if (hours > 0) {
+    parts.push(`${hours} ч`);
+  }
+  if (minutes > 0 && days === 0) {
+    parts.push(`${minutes} мин`);
+  }
+
+  return parts.length > 0 ? parts.join(" ") : "меньше минуты";
+}
+
+function getRequestCountdownLabel(request: LessonBookingRequest, nowMs = Date.now()) {
+  const minutesToStart = getRequestMinutesToStart(request, nowMs);
+  if (minutesToStart <= -1) {
+    return `просрочено на ${formatDurationRu(Math.abs(minutesToStart))}`;
+  }
+  if (minutesToStart <= 0) {
+    return "начинается сейчас";
+  }
+  return `через ${formatDurationRu(minutesToStart)}`;
+}
+
+function getRequestUrgency(request: LessonBookingRequest, nowMs = Date.now()): RequestUrgency {
+  const startMs = getRequestStartMs(request);
+  const diffHours = (startMs - nowMs) / (1000 * 60 * 60);
+
+  if (diffHours <= 6) {
+    return "critical";
+  }
+  if (diffHours <= 24) {
+    return "today";
+  }
+  if (diffHours <= 48) {
+    return "soon";
+  }
+  return "normal";
+}
+
+function getRequestUrgencyMeta(request: LessonBookingRequest, nowMs = Date.now()) {
+  const urgency = getRequestUrgency(request, nowMs);
+  if (urgency === "critical") {
+    return { label: "Срочно", className: "border-rose-300 bg-rose-50 text-rose-700" };
+  }
+  if (urgency === "today") {
+    return { label: "Сегодня", className: "border-amber-300 bg-amber-50 text-amber-800" };
+  }
+  if (urgency === "soon") {
+    return { label: "Скоро", className: "border-primary/30 bg-primary/10 text-primary" };
+  }
+  return null;
+}
+
+function getRequestSlaMeta(request: LessonBookingRequest, nowMs = Date.now()) {
+  if (request.status === "paid" || request.status === "declined" || request.status === "cancelled") {
+    return null;
+  }
+
+  const minutesToStart = getRequestMinutesToStart(request, nowMs);
+  let level: RequestSlaLevel = "ok";
+  if (minutesToStart <= 0 || minutesToStart <= 180) {
+    level = "breach";
+  } else if (minutesToStart <= 12 * 60) {
+    level = "risk";
+  }
+
+  if (level === "breach") {
+    return { level, label: "SLA критичен", className: "border-rose-300 bg-rose-50 text-rose-700" };
+  }
+  if (level === "risk") {
+    return { level, label: "SLA под риском", className: "border-amber-300 bg-amber-50 text-amber-800" };
+  }
+  return { level, label: "SLA в норме", className: "border-emerald-300 bg-emerald-50 text-emerald-800" };
+}
+
+function isRequestSlaRisk(request: LessonBookingRequest, nowMs = Date.now()) {
+  const slaMeta = getRequestSlaMeta(request, nowMs);
+  return slaMeta?.level === "risk" || slaMeta?.level === "breach";
+}
+
+function getRequestRecommendation(request: LessonBookingRequest, nowMs = Date.now()) {
+  const minutesToStart = getRequestMinutesToStart(request, nowMs);
+
+  if (request.status === "pending") {
+    if (minutesToStart <= 180) {
+      return {
+        label: "Срочно подтвердить или перенести",
+        hint: "До урока мало времени, ученику нужен быстрый ответ.",
+        className: "border-rose-300 bg-rose-50 text-rose-700"
+      };
+    }
+    return {
+      label: "Подтвердить слот",
+      hint: "После подтверждения ученик сможет перейти к оплате.",
+      className: "border-primary/30 bg-primary/10 text-primary"
+    };
+  }
+
+  if (request.status === "reschedule_proposed") {
+    if (minutesToStart <= 12 * 60) {
+      return {
+        label: "Уточнить перенос в чате",
+        hint: "Рекомендуется закрепить новый слот до ближайшего урока.",
+        className: "border-amber-300 bg-amber-50 text-amber-800"
+      };
+    }
+    return {
+      label: "Ожидать ответ ученика",
+      hint: "Если ответа нет до конца дня, отправьте напоминание.",
+      className: "border-border bg-slate-50 text-muted-foreground"
+    };
+  }
+
+  if (request.status === "awaiting_payment") {
+    if (minutesToStart <= 12 * 60) {
+      return {
+        label: "Напомнить об оплате",
+        hint: "Иначе занятие не попадет в подтвержденный календарь.",
+        className: "border-amber-300 bg-amber-50 text-amber-800"
+      };
+    }
+    return {
+      label: "Ожидать оплату",
+      hint: "Пока слот зарезервирован за учеником.",
+      className: "border-border bg-slate-50 text-muted-foreground"
+    };
+  }
+
+  if (request.status === "declined") {
+    return {
+      label: "Предложить альтернативный слот",
+      hint: "Можно вернуть ученика в воронку через чат.",
+      className: "border-rose-200 bg-rose-50 text-rose-700"
+    };
+  }
+
+  if (request.status === "paid") {
+    return {
+      label: "Подготовить материалы к уроку",
+      hint: "Занятие уже подтверждено и появилось в расписании.",
+      className: "border-emerald-300 bg-emerald-50 text-emerald-800"
+    };
+  }
+
+  return {
+    label: "Без действий",
+    hint: "Заявка закрыта.",
+    className: "border-border bg-slate-50 text-muted-foreground"
+  };
+}
+
+function getRequestPriorityScore(request: LessonBookingRequest, nowMs = Date.now()) {
+  const urgency = getRequestUrgency(request, nowMs);
+  const base =
+    request.status === "pending"
+      ? 500
+      : request.status === "reschedule_proposed"
+        ? 420
+        : request.status === "awaiting_payment"
+          ? 340
+          : request.status === "paid"
+            ? 200
+            : 120;
+
+  const urgencyBoost = urgency === "critical" ? 90 : urgency === "today" ? 60 : urgency === "soon" ? 30 : 0;
+  return base + urgencyBoost;
+}
+
 export function TeacherClassroomClient({
   initialStatusFilter,
   initialViewMode,
@@ -317,6 +518,7 @@ export function TeacherClassroomClient({
   const [teacherActionNote, setTeacherActionNote] = useState<string | null>(null);
   const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>(resolvedInitialStatusFilter);
   const [requestViewMode, setRequestViewMode] = useState<RequestViewMode>(resolvedInitialViewMode);
+  const [showUrgentOnly, setShowUrgentOnly] = useState(false);
   const [messageTone, setMessageTone] = useState<MessageTone>("standard");
   const [teacherMessageDraft, setTeacherMessageDraft] = useState("");
   const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
@@ -387,22 +589,44 @@ export function TeacherClassroomClient({
   const requestQueue = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
+    return requestsForTeacher
+      .filter((request) => {
+        const byStatus = requestStatusFilter === "all" ? true : request.status === requestStatusFilter;
+        if (!byStatus) {
+          return false;
+        }
+
+        if (showUrgentOnly) {
+          const urgency = getRequestUrgency(request);
+          if (urgency !== "critical" && urgency !== "today") {
+            return false;
+          }
+        }
+
+        if (!query) {
+          return true;
+        }
+
+        return [request.subject, request.studentName ?? "Ученик", request.slot, request.status]
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
+      })
+      .sort((left, right) => {
+        const priorityDiff = getRequestPriorityScore(right) - getRequestPriorityScore(left);
+        if (priorityDiff !== 0) {
+          return priorityDiff;
+        }
+        return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+      });
+  }, [requestStatusFilter, requestsForTeacher, searchQuery, showUrgentOnly]);
+
+  const urgentRequestsCount = useMemo(() => {
     return requestsForTeacher.filter((request) => {
-      const byStatus = requestStatusFilter === "all" ? true : request.status === requestStatusFilter;
-      if (!byStatus) {
-        return false;
-      }
-
-      if (!query) {
-        return true;
-      }
-
-      return [request.subject, request.studentName ?? "Ученик", request.slot, request.status]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
-    });
-  }, [requestStatusFilter, requestsForTeacher, searchQuery]);
+      const urgency = getRequestUrgency(request);
+      return urgency === "critical" || urgency === "today";
+    }).length;
+  }, [requestsForTeacher]);
 
   const queueColumns = useMemo(() => {
     return queueColumnConfig
@@ -1106,21 +1330,34 @@ export function TeacherClassroomClient({
     }
 
     const customMessage = drawerMessageDraft.trim() || undefined;
+    const nextRequestId =
+      focusedRequestIndex >= 0
+        ? drawerNavigationList[focusedRequestIndex + 1]?.id ?? drawerNavigationList[focusedRequestIndex - 1]?.id ?? null
+        : null;
+
     if (drawerAction === "confirm") {
       confirmRequest(focusedRequest, customMessage);
-      return;
-    }
-
-    if (drawerAction === "propose") {
+    } else if (drawerAction === "propose") {
       proposeNewTime(focusedRequest, customMessage);
-      return;
+    } else {
+      declineRequest(focusedRequest, customMessage);
     }
 
-    declineRequest(focusedRequest, customMessage);
+    if (nextRequestId) {
+      const nextRequest = requestsForTeacher.find((request) => request.id === nextRequestId);
+      if (nextRequest) {
+        openRequestDrawer(nextRequest);
+        return;
+      }
+    }
+
+    setIsRequestDrawerOpen(false);
+    setFocusedRequestId(null);
   };
 
   const renderRequestCard = (request: LessonBookingRequest, layout: "list" | "kanban" = "list") => {
     const statusMeta = getRequestStatusMeta(request.status);
+    const urgencyMeta = getRequestUrgencyMeta(request);
     const actionable = isActionableRequestStatus(request.status);
     const isSelected = selectedRequestIds.includes(request.id);
     const history = bookingEventsByRequest.get(request.id) ?? [];
@@ -1150,6 +1387,11 @@ export function TeacherClassroomClient({
             >
               Детали
             </button>
+            {urgencyMeta ? (
+              <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", urgencyMeta.className)}>
+                {urgencyMeta.label}
+              </span>
+            ) : null}
             {actionable ? (
               <label className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-2 py-0.5 text-xs font-semibold text-foreground">
                 <input
@@ -1243,6 +1485,7 @@ export function TeacherClassroomClient({
 
   const bulkActionUi = pendingBulkAction ? getBulkActionUi(pendingBulkAction) : null;
   const focusedRequestStatusMeta = focusedRequest ? getRequestStatusMeta(focusedRequest.status) : null;
+  const focusedRequestUrgencyMeta = focusedRequest ? getRequestUrgencyMeta(focusedRequest) : null;
   const drawerActionUi = getDrawerActionUi(drawerAction);
 
   return (
@@ -1425,6 +1668,19 @@ export function TeacherClassroomClient({
 
               <button
                 type="button"
+                onClick={() => setShowUrgentOnly((prev) => !prev)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                  showUrgentOnly
+                    ? "border-rose-300 bg-rose-50 text-rose-700"
+                    : "border-border bg-white text-foreground hover:bg-slate-50"
+                )}
+              >
+                {showUrgentOnly ? "Показать все" : "Только срочные"}
+              </button>
+
+              <button
+                type="button"
                 onClick={toggleSelectAllQueue}
                 disabled={selectableQueueRequestIds.length === 0}
                 className="rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-50"
@@ -1455,7 +1711,9 @@ export function TeacherClassroomClient({
               >
                 Отклонить выбранные
               </button>
-              <span className="ml-auto text-[11px] text-muted-foreground">Выделено: {selectedSelectableCount}</span>
+              <span className="ml-auto text-[11px] text-muted-foreground">
+                Срочных: {urgentRequestsCount} · Выделено: {selectedSelectableCount}
+              </span>
             </div>
 
             {requestQueue.length === 0 ? (
@@ -1694,17 +1952,25 @@ export function TeacherClassroomClient({
                 <p className="text-xs text-muted-foreground">
                   Заявка {focusedRequestIndex + 1} из {drawerNavigationList.length}
                 </p>
+                <p className="text-[11px] text-muted-foreground">После действия карточка автоматически переключится на следующую заявку.</p>
                 <article className="rounded-2xl border border-border bg-slate-50 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <p className="text-base font-semibold text-foreground">{focusedRequest.subject}</p>
                       <p className="mt-1 text-xs text-muted-foreground">Ученик: {focusedRequest.studentName ?? "Ученик"}</p>
                     </div>
-                    {focusedRequestStatusMeta ? (
-                      <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", focusedRequestStatusMeta.className)}>
-                        {focusedRequestStatusMeta.label}
-                      </span>
-                    ) : null}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {focusedRequestUrgencyMeta ? (
+                        <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", focusedRequestUrgencyMeta.className)}>
+                          {focusedRequestUrgencyMeta.label}
+                        </span>
+                      ) : null}
+                      {focusedRequestStatusMeta ? (
+                        <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", focusedRequestStatusMeta.className)}>
+                          {focusedRequestStatusMeta.label}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
