@@ -203,6 +203,22 @@ function isActionableRequestStatus(status: LessonBookingRequest["status"]) {
   return status === "pending" || status === "reschedule_proposed";
 }
 
+function isActionAllowedForStatus(action: RequestAction, status: LessonBookingRequest["status"]) {
+  if (status === "pending" || status === "reschedule_proposed") {
+    return true;
+  }
+
+  if (status === "declined") {
+    return action === "propose";
+  }
+
+  if (status === "awaiting_payment" || status === "paid") {
+    return action === "propose" || action === "decline";
+  }
+
+  return false;
+}
+
 function buildNextDaySlotForRequest(request: LessonBookingRequest) {
   const sourceDate = new Date(request.startAt);
   const proposedDate = new Date(sourceDate.getTime() + 24 * 60 * 60 * 1000);
@@ -260,6 +276,23 @@ function buildTeacherActionMessage({
   return "К сожалению, выбранный слот недоступен. Пожалуйста, выберите другое время.";
 }
 
+function buildDefaultMessageForAction(request: LessonBookingRequest, action: RequestAction, tone: MessageTone) {
+  if (action === "propose") {
+    return buildTeacherActionMessage({
+      action,
+      request,
+      tone,
+      proposedSlot: buildNextDaySlotForRequest(request)
+    });
+  }
+
+  return buildTeacherActionMessage({
+    action,
+    request,
+    tone
+  });
+}
+
 export function TeacherClassroomClient({
   initialStatusFilter,
   initialViewMode,
@@ -291,6 +324,8 @@ export function TeacherClassroomClient({
   const [isBulkConfirmOpen, setIsBulkConfirmOpen] = useState(false);
   const [focusedRequestId, setFocusedRequestId] = useState<string | null>(null);
   const [isRequestDrawerOpen, setIsRequestDrawerOpen] = useState(false);
+  const [drawerAction, setDrawerAction] = useState<RequestAction>("confirm");
+  const [drawerMessageDraft, setDrawerMessageDraft] = useState("");
 
   const weekDays = useMemo(() => createWeekDays(anchorDate), [anchorDate]);
 
@@ -510,6 +545,19 @@ export function TeacherClassroomClient({
     [bookingEventsByRequest, focusedRequest]
   );
 
+  const drawerNavigationList = useMemo(() => {
+    if (!focusedRequestId) {
+      return requestQueue;
+    }
+    const queueHasFocused = requestQueue.some((request) => request.id === focusedRequestId);
+    return queueHasFocused ? requestQueue : requestsForTeacher;
+  }, [focusedRequestId, requestQueue, requestsForTeacher]);
+
+  const focusedRequestIndex = useMemo(
+    () => drawerNavigationList.findIndex((request) => request.id === focusedRequestId),
+    [drawerNavigationList, focusedRequestId]
+  );
+
   useEffect(() => {
     if (!isRequestDrawerOpen || !focusedRequestId) {
       return;
@@ -520,6 +568,27 @@ export function TeacherClassroomClient({
       setFocusedRequestId(null);
     }
   }, [focusedRequestId, isRequestDrawerOpen, requestsForTeacher]);
+
+  useEffect(() => {
+    if (!focusedRequest) {
+      return;
+    }
+
+    if (focusedRequest.status === "pending" || focusedRequest.status === "reschedule_proposed") {
+      setDrawerAction("confirm");
+    } else {
+      setDrawerAction("propose");
+    }
+
+    setDrawerMessageDraft(
+      focusedRequest.teacherMessage ??
+        buildDefaultMessageForAction(
+          focusedRequest,
+          focusedRequest.status === "pending" || focusedRequest.status === "reschedule_proposed" ? "confirm" : "propose",
+          messageTone
+        )
+    );
+  }, [focusedRequest, messageTone]);
 
   const formatEventLogDate = (value: string) => {
     const date = new Date(value);
@@ -674,26 +743,26 @@ export function TeacherClassroomClient({
     return normalized.length > 0 ? normalized : undefined;
   };
 
-  const confirmRequest = (request: LessonBookingRequest) => {
-    const customMessage = consumeCustomMessage();
+  const confirmRequest = (request: LessonBookingRequest, customMessageOverride?: string) => {
+    const customMessage = customMessageOverride ?? consumeCustomMessage();
     applyRequestAction(request, "confirm", { tone: messageTone, customMessage });
-    if (customMessage) {
+    if (!customMessageOverride && customMessage) {
       setTeacherMessageDraft("");
     }
   };
 
-  const proposeNewTime = (request: LessonBookingRequest) => {
-    const customMessage = consumeCustomMessage();
+  const proposeNewTime = (request: LessonBookingRequest, customMessageOverride?: string) => {
+    const customMessage = customMessageOverride ?? consumeCustomMessage();
     applyRequestAction(request, "propose", { tone: messageTone, customMessage });
-    if (customMessage) {
+    if (!customMessageOverride && customMessage) {
       setTeacherMessageDraft("");
     }
   };
 
-  const declineRequest = (request: LessonBookingRequest) => {
-    const customMessage = consumeCustomMessage();
+  const declineRequest = (request: LessonBookingRequest, customMessageOverride?: string) => {
+    const customMessage = customMessageOverride ?? consumeCustomMessage();
     applyRequestAction(request, "decline", { tone: messageTone, customMessage });
-    if (customMessage) {
+    if (!customMessageOverride && customMessage) {
       setTeacherMessageDraft("");
     }
   };
@@ -772,6 +841,31 @@ export function TeacherClassroomClient({
       title: "Отклонить выбранные заявки",
       button: "Отклонить заявки",
       buttonClass: "border border-rose-200 bg-rose-50 text-rose-700"
+    };
+  };
+
+  const getDrawerActionUi = (action: RequestAction) => {
+    if (action === "confirm") {
+      return {
+        label: "Подтвердить",
+        hint: "Подтверждаем слот и переводим заявку в ожидание оплаты.",
+        buttonClass: "bg-primary text-primary-foreground",
+        title: "Подтверждение слота"
+      };
+    }
+    if (action === "propose") {
+      return {
+        label: "Предложить перенос",
+        hint: "Предлагаем новый слот и ждем подтверждение от ученика.",
+        buttonClass: "border border-border bg-white text-foreground",
+        title: "Перенос занятия"
+      };
+    }
+    return {
+      label: "Отклонить",
+      hint: "Отклоняем заявку и отправляем ученику пояснение.",
+      buttonClass: "border border-rose-200 bg-rose-50 text-rose-700",
+      title: "Отклонение заявки"
     };
   };
 
@@ -950,7 +1044,79 @@ export function TeacherClassroomClient({
 
   const openRequestDrawer = (request: LessonBookingRequest) => {
     setFocusedRequestId(request.id);
+    setDrawerAction(request.status === "declined" ? "propose" : "confirm");
+    setDrawerMessageDraft(
+      request.teacherMessage ?? buildDefaultMessageForAction(request, request.status === "declined" ? "propose" : "confirm", messageTone)
+    );
     setIsRequestDrawerOpen(true);
+  };
+
+  const openAdjacentRequest = (direction: "prev" | "next") => {
+    if (focusedRequestIndex < 0) {
+      return;
+    }
+
+    const nextIndex = direction === "prev" ? focusedRequestIndex - 1 : focusedRequestIndex + 1;
+    const nextRequest = drawerNavigationList[nextIndex];
+    if (!nextRequest) {
+      return;
+    }
+
+    openRequestDrawer(nextRequest);
+  };
+
+  const drawerTemplates = useMemo(() => {
+    if (!focusedRequest) {
+      return [];
+    }
+
+    const base = buildDefaultMessageForAction(focusedRequest, drawerAction, messageTone);
+    if (drawerAction === "confirm") {
+      return [
+        base,
+        `Подтверждаю слот ${formatBookingSlotLabel(focusedRequest.slot)}. После оплаты отправлю материалы для подготовки.`,
+        `Слот ${formatBookingSlotLabel(focusedRequest.slot)} подтвержден. Если планы изменятся, напишите заранее.`
+      ];
+    }
+
+    if (drawerAction === "propose") {
+      const proposedSlot = buildNextDaySlotForRequest(focusedRequest);
+      return [
+        base,
+        `Предлагаю перенос на ${formatBookingSlotLabel(proposedSlot)}. Подтвердите, если время подходит.`,
+        `Не смогу провести урок в исходный слот. Могу провести в ${formatBookingSlotLabel(proposedSlot)}.`
+      ];
+    }
+
+    return [
+      base,
+      "К сожалению, текущий слот недоступен. Предлагаю выбрать другое время в календаре.",
+      "Отклоняю этот запрос из-за занятости. Напишите, и подберем альтернативу в течение дня."
+    ];
+  }, [drawerAction, focusedRequest, messageTone]);
+
+  const executeDrawerAction = () => {
+    if (!focusedRequest) {
+      return;
+    }
+
+    if (!isActionAllowedForStatus(drawerAction, focusedRequest.status)) {
+      setTeacherActionNote("Это действие недоступно для текущего статуса заявки.");
+      return;
+    }
+
+    const customMessage = drawerMessageDraft.trim() || undefined;
+    if (drawerAction === "confirm") {
+      confirmRequest(focusedRequest, customMessage);
+      return;
+    }
+
+    if (drawerAction === "propose") {
+      proposeNewTime(focusedRequest, customMessage);
+      return;
+    }
+
+    declineRequest(focusedRequest, customMessage);
   };
 
   const renderRequestCard = (request: LessonBookingRequest, layout: "list" | "kanban" = "list") => {
@@ -1077,6 +1243,7 @@ export function TeacherClassroomClient({
 
   const bulkActionUi = pendingBulkAction ? getBulkActionUi(pendingBulkAction) : null;
   const focusedRequestStatusMeta = focusedRequest ? getRequestStatusMeta(focusedRequest.status) : null;
+  const drawerActionUi = getDrawerActionUi(drawerAction);
 
   return (
     <div className="space-y-6">
@@ -1491,19 +1658,42 @@ export function TeacherClassroomClient({
                   Полная история заявки и быстрые действия без перехода по страницам.
                 </Dialog.Description>
               </div>
-              <Dialog.Close asChild>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-muted-foreground"
-                  aria-label="Закрыть карточку заявки"
+                  onClick={() => openAdjacentRequest("prev")}
+                  disabled={focusedRequestIndex <= 0}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Предыдущая заявка"
                 >
-                  <X className="h-4 w-4" />
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
-              </Dialog.Close>
+                <button
+                  type="button"
+                  onClick={() => openAdjacentRequest("next")}
+                  disabled={focusedRequestIndex < 0 || focusedRequestIndex >= drawerNavigationList.length - 1}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Следующая заявка"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <Dialog.Close asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-muted-foreground"
+                    aria-label="Закрыть карточку заявки"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </Dialog.Close>
+              </div>
             </div>
 
             {focusedRequest ? (
               <div className="mt-4 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Заявка {focusedRequestIndex + 1} из {drawerNavigationList.length}
+                </p>
                 <article className="rounded-2xl border border-border bg-slate-50 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
@@ -1549,49 +1739,93 @@ export function TeacherClassroomClient({
 
                 <article className="rounded-2xl border border-border bg-white p-4">
                   <p className="text-sm font-semibold text-foreground">Действия преподавателя</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {isActionableRequestStatus(focusedRequest.status) ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => confirmRequest(focusedRequest)}
-                          className="inline-flex rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
-                        >
-                          Подтвердить слот
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => proposeNewTime(focusedRequest)}
-                          className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
-                        >
-                          Предложить перенос
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => declineRequest(focusedRequest)}
-                          className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
-                        >
-                          Отклонить
-                        </button>
-                      </>
-                    ) : focusedRequest.status === "awaiting_payment" ? (
-                      <p className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                        Слот подтвержден. Ждем оплату ученика, после оплаты занятие появится в расписании.
-                      </p>
-                    ) : focusedRequest.status === "paid" ? (
-                      <p className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                        Заявка оплачена и зафиксирована в календаре.
-                      </p>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => proposeNewTime(focusedRequest)}
-                        className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
-                      >
-                        Предложить новый слот
-                      </button>
-                    )}
 
+                  {(focusedRequest.status === "awaiting_payment" || focusedRequest.status === "paid") && (
+                    <p
+                      className={cn(
+                        "mt-3 rounded-xl border px-3 py-2 text-xs",
+                        focusedRequest.status === "awaiting_payment"
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                          : "border-emerald-300 bg-white text-emerald-700"
+                      )}
+                    >
+                      {focusedRequest.status === "awaiting_payment"
+                        ? "Слот подтвержден. Ждем оплату ученика, после оплаты занятие появится в расписании."
+                        : "Заявка оплачена и зафиксирована в календаре."}
+                    </p>
+                  )}
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    {(["confirm", "propose", "decline"] as RequestAction[]).map((action) => {
+                      const actionUi = getDrawerActionUi(action);
+                      const actionAllowed = isActionAllowedForStatus(action, focusedRequest.status);
+                      return (
+                        <button
+                          key={action}
+                          type="button"
+                          disabled={!actionAllowed}
+                          onClick={() => {
+                            if (!actionAllowed) {
+                              return;
+                            }
+                            setDrawerAction(action);
+                            setDrawerMessageDraft(buildDefaultMessageForAction(focusedRequest, action, messageTone));
+                          }}
+                          className={cn(
+                            "rounded-xl border px-3 py-2 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
+                            drawerAction === action
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-slate-50 text-foreground hover:bg-white",
+                            !actionAllowed ? "border-border bg-slate-100 text-muted-foreground" : ""
+                          )}
+                        >
+                          {actionUi.title}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <p className="mt-2 text-xs text-muted-foreground">{drawerActionUi.hint}</p>
+
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Шаблоны ответа</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {drawerTemplates.map((template, index) => (
+                        <button
+                          key={`${drawerAction}-template-${index}`}
+                          type="button"
+                          onClick={() => setDrawerMessageDraft(template)}
+                          className="inline-flex rounded-full border border-border bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-foreground hover:bg-white"
+                        >
+                          Шаблон {index + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="mt-3 block">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Сообщение ученику</span>
+                    <textarea
+                      value={drawerMessageDraft}
+                      onChange={(event) => setDrawerMessageDraft(event.target.value)}
+                      rows={4}
+                      className="mt-2 w-full resize-y rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                      placeholder="Введите комментарий ученику"
+                    />
+                  </label>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={executeDrawerAction}
+                      disabled={!isActionAllowedForStatus(drawerAction, focusedRequest.status)}
+                      className={cn(
+                        "inline-flex rounded-full px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50",
+                        drawerActionUi.buttonClass
+                      )}
+                    >
+                      {drawerActionUi.label}
+                    </button>
                     <Link
                       href={`/teacher/messages?student=${encodeURIComponent(resolveRequestStudentId(focusedRequest))}`}
                       className="inline-flex rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground"
