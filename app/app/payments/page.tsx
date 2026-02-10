@@ -16,10 +16,11 @@ import {
 } from "@/data/payments";
 import { type RefundTicket } from "@/data/admin";
 import { studentProfile } from "@/data/student";
-import { formatBookingSlotLabel, LessonBookingRequest, readLessonBookings, updateLessonBooking } from "@/lib/lesson-bookings";
-import { createBookingEvent } from "@/lib/booking-events";
+import { formatBookingSlotLabel, LessonBookingRequest, readLessonBookings } from "@/lib/lesson-bookings";
+import { createBookingEventViaApi, syncBookingsFromApi, updateBookingViaApi } from "@/lib/api/bookings-client";
 import { readRefundTickets } from "@/lib/refund-tickets";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 5;
@@ -156,11 +157,24 @@ export default function PaymentsPage() {
   });
 
   useEffect(() => {
+    let mounted = true;
     setLessonBookings(readLessonBookings());
+
+    void (async () => {
+      const next = await syncBookingsFromApi();
+      if (mounted) {
+        setLessonBookings(next);
+      }
+    })();
 
     const syncBookings = () => setLessonBookings(readLessonBookings());
     window.addEventListener("storage", syncBookings);
-    return () => window.removeEventListener("storage", syncBookings);
+    window.addEventListener(STORAGE_SYNC_EVENT, syncBookings);
+    return () => {
+      mounted = false;
+      window.removeEventListener("storage", syncBookings);
+      window.removeEventListener(STORAGE_SYNC_EVENT, syncBookings);
+    };
   }, []);
 
   useEffect(() => {
@@ -276,7 +290,7 @@ export default function PaymentsPage() {
     setIsAddCardOpen(false);
   };
 
-  const handlePayLesson = () => {
+  const handlePayLesson = async () => {
     if (!selectedLessonBooking || selectedLessonBooking.status !== "awaiting_payment") {
       return;
     }
@@ -284,58 +298,66 @@ export default function PaymentsPage() {
     const amountRubles = selectedLessonBooking.amountRubles ?? 1990;
     const paidAt = new Date().toISOString();
 
-    const nextBookings = updateLessonBooking(selectedLessonBooking.id, {
-      status: "paid",
-      paidAt,
-      amountRubles,
-      teacherMessage: "Оплата получена. Занятие добавлено в расписание."
-    });
+    try {
+      const nextBookings = await updateBookingViaApi(selectedLessonBooking.id, {
+        status: "paid",
+        paidAt,
+        amountRubles,
+        teacherMessage: "Оплата получена. Занятие добавлено в расписание."
+      });
 
-    createBookingEvent({
-      bookingId: selectedLessonBooking.id,
-      actor: "student",
-      action: "payment_paid",
-      title: "Занятие оплачено",
-      description: `Оплата ${formatAmount(amountRubles)} за слот ${formatBookingSlotLabel(selectedLessonBooking.slot)} успешно завершена.`
-    });
+      await createBookingEventViaApi({
+        bookingId: selectedLessonBooking.id,
+        actor: "student",
+        action: "payment_paid",
+        title: "Занятие оплачено",
+        description: `Оплата ${formatAmount(amountRubles)} за слот ${formatBookingSlotLabel(selectedLessonBooking.slot)} успешно завершена.`
+      });
 
-    setLessonBookings(nextBookings);
+      setLessonBookings(nextBookings);
 
-    sendMessageToSharedChatThread({
-      teacherId: selectedLessonBooking.teacherId,
-      teacherName: selectedLessonBooking.teacherName,
-      studentId: selectedLessonBooking.studentId ?? studentProfile.id,
-      studentName: selectedLessonBooking.studentName ?? studentProfile.name,
-      studentAvatarUrl: studentProfile.avatarUrl,
-      subject: selectedLessonBooking.subject,
-      courseTitle: selectedLessonBooking.subject,
-      sender: "student",
-      text: `Оплатил(а) занятие ${formatBookingSlotLabel(selectedLessonBooking.slot)}. Подтвердите, пожалуйста, что всё в силе.`
-    });
-
-    if (selectedCard) {
-      const nextTransaction: PaymentTransaction = {
-        id: `trx-lesson-${Date.now()}`,
-        invoice: `#${Math.floor(1000 + Math.random() * 8999)}`,
-        date: paidAt,
-        status: "Оплачен",
-        productTitle: `Индивидуальный урок: ${selectedLessonBooking.subject}`,
-        productSubtitle: `Слот ${formatBookingSlotLabel(selectedLessonBooking.slot)}`,
+      sendMessageToSharedChatThread({
+        teacherId: selectedLessonBooking.teacherId,
         teacherName: selectedLessonBooking.teacherName,
-        cardId: selectedCard.id,
-        amount: amountRubles,
-        currency: "₽",
-        type: "lesson"
-      };
+        studentId: selectedLessonBooking.studentId ?? studentProfile.id,
+        studentName: selectedLessonBooking.studentName ?? studentProfile.name,
+        studentAvatarUrl: studentProfile.avatarUrl,
+        subject: selectedLessonBooking.subject,
+        courseTitle: selectedLessonBooking.subject,
+        sender: "student",
+        text: `Оплатил(а) занятие ${formatBookingSlotLabel(selectedLessonBooking.slot)}. Подтвердите, пожалуйста, что всё в силе.`
+      });
 
-      setTransactions((prev) => [nextTransaction, ...prev]);
+      if (selectedCard) {
+        const nextTransaction: PaymentTransaction = {
+          id: `trx-lesson-${Date.now()}`,
+          invoice: `#${Math.floor(1000 + Math.random() * 8999)}`,
+          date: paidAt,
+          status: "Оплачен",
+          productTitle: `Индивидуальный урок: ${selectedLessonBooking.subject}`,
+          productSubtitle: `Слот ${formatBookingSlotLabel(selectedLessonBooking.slot)}`,
+          teacherName: selectedLessonBooking.teacherName,
+          cardId: selectedCard.id,
+          amount: amountRubles,
+          currency: "₽",
+          type: "lesson"
+        };
+
+        setTransactions((prev) => [nextTransaction, ...prev]);
+      }
+
+      setPaymentNotice({
+        kind: "success",
+        title: "Оплата прошла успешно",
+        description: "Урок отмечен как оплаченный и теперь отображается в вашем расписании."
+      });
+    } catch {
+      setPaymentNotice({
+        kind: "info",
+        title: "Платеж обрабатывается",
+        description: "Синхронизация задержалась. Обновите страницу и проверьте статус заявки."
+      });
     }
-
-    setPaymentNotice({
-      kind: "success",
-      title: "Оплата прошла успешно",
-      description: "Урок отмечен как оплаченный и теперь отображается в вашем расписании."
-    });
   };
 
   return (

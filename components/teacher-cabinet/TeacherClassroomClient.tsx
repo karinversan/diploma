@@ -22,6 +22,7 @@ import {
   updateLessonBooking
 } from "@/lib/lesson-bookings";
 import { BookingEvent, createBookingEvent, readBookingEvents } from "@/lib/booking-events";
+import { syncBookingEventsFromApi, syncBookingsFromApi } from "@/lib/api/bookings-client";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { createRefundTicket } from "@/lib/refund-tickets";
 import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
@@ -549,8 +550,20 @@ export function TeacherClassroomClient({
   }, [searchQuery]);
 
   useEffect(() => {
+    let mounted = true;
+
     setBookingRequests(readLessonBookings());
     setBookingEvents(readBookingEvents());
+
+    void (async () => {
+      const [nextBookings, nextEvents] = await Promise.all([syncBookingsFromApi(), syncBookingEventsFromApi()]);
+      if (!mounted) {
+        return;
+      }
+      setBookingRequests(nextBookings);
+      setBookingEvents(nextEvents);
+    })();
+
     const syncAll = () => {
       setBookingRequests(readLessonBookings());
       setBookingEvents(readBookingEvents());
@@ -558,6 +571,7 @@ export function TeacherClassroomClient({
     window.addEventListener("storage", syncAll);
     window.addEventListener(STORAGE_SYNC_EVENT, syncAll);
     return () => {
+      mounted = false;
       window.removeEventListener("storage", syncAll);
       window.removeEventListener(STORAGE_SYNC_EVENT, syncAll);
     };

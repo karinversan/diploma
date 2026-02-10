@@ -11,10 +11,9 @@ import { Teacher } from "@/data/teachers";
 import {
   buildBookingId,
   parseSlotToDateTime,
-  readLessonBookings,
-  upsertLessonBooking
+  readLessonBookings
 } from "@/lib/lesson-bookings";
-import { createBookingEvent } from "@/lib/booking-events";
+import { createBookingEventViaApi, syncBookingsFromApi, upsertBookingViaApi } from "@/lib/api/bookings-client";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 
 import { SelectedScheduleSlot } from "@/components/teacher/SchedulePicker";
@@ -97,6 +96,7 @@ export function TeacherSidebar({
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [bookingDraft, setBookingDraft] = useState("");
   const [bookingNotice, setBookingNotice] = useState<BookingNotice | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const primaryLabel = bookingButtonLabel ?? "Записаться на пробный урок";
   const selectedSlotValue = selectedSlot ? `${selectedSlot.date} ${selectedSlot.time}` : "";
@@ -122,7 +122,7 @@ export function TeacherSidebar({
     setBookingDraft(createDefaultDraft(teacher, selectedSlot));
   }, [bookingModalOpen, selectedSlot, teacher]);
 
-  const confirmBooking = () => {
+  const confirmBooking = async () => {
     if (!selectedSlotValue) {
       setBookingNotice({
         kind: "error",
@@ -149,10 +149,11 @@ export function TeacherSidebar({
     });
 
     try {
+      setIsSubmitting(true);
       const now = new Date().toISOString();
-      const existing = readLessonBookings().find((item) => item.id === bookingId);
+      const existing = (await syncBookingsFromApi()).find((item) => item.id === bookingId);
 
-      upsertLessonBooking({
+      await upsertBookingViaApi({
         id: bookingId,
         courseId: bookingCourseId,
         teacherId: teacher.id,
@@ -174,7 +175,7 @@ export function TeacherSidebar({
       });
 
       if (!existing) {
-        createBookingEvent({
+        await createBookingEventViaApi({
           bookingId,
           actor: "student",
           action: "booking_created",
@@ -211,6 +212,8 @@ export function TeacherSidebar({
         title: "Не удалось сохранить запись",
         description: "Повторите попытку. Если ошибка сохранится, перезагрузите страницу."
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -369,10 +372,11 @@ export function TeacherSidebar({
                       <button
                         type="button"
                         onClick={confirmBooking}
+                        disabled={isSubmitting}
                         className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
                       >
                         <CheckCircle2 className="mr-1.5 h-4 w-4" />
-                        Отправить заявку
+                        {isSubmitting ? "Отправляем..." : "Отправить заявку"}
                       </button>
                       <Link
                         href={modalMessageLink}

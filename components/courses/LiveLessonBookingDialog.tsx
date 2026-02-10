@@ -18,10 +18,9 @@ import {
   buildBookingId,
   buildSlotKey,
   parseSlotToDateTime,
-  readLessonBookings,
-  upsertLessonBooking
+  readLessonBookings
 } from "@/lib/lesson-bookings";
-import { createBookingEvent } from "@/lib/booking-events";
+import { createBookingEventViaApi, syncBookingsFromApi, upsertBookingViaApi } from "@/lib/api/bookings-client";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
 import { studentProfile } from "@/data/student";
 import { cn } from "@/lib/utils";
@@ -118,6 +117,7 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
   const [selectedSlotKey, setSelectedSlotKey] = useState<string>("");
   const [bookedSlotKeys, setBookedSlotKeys] = useState<Set<string>>(new Set());
   const [bookingFeedback, setBookingFeedback] = useState<BookingFeedback | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const matchedTeachers = useMemo(() => {
     const keywords = getCourseKeywords(course);
@@ -143,9 +143,9 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
     }
 
     setBookingFeedback(null);
+    let cancelled = false;
 
-    try {
-      const parsed = readLessonBookings();
+    const assignBookedKeys = (parsed: ReturnType<typeof readLessonBookings>) => {
       const keys = new Set(
         parsed
           .filter(
@@ -157,10 +157,21 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
           )
           .map((item) => buildSlotKey(item.teacherId, item.slot))
       );
-      setBookedSlotKeys(keys);
-    } catch {
-      setBookedSlotKeys(new Set());
-    }
+      if (!cancelled) {
+        setBookedSlotKeys(keys);
+      }
+    };
+
+    assignBookedKeys(readLessonBookings());
+
+    void (async () => {
+      const parsed = await syncBookingsFromApi();
+      assignBookedKeys(parsed);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   useEffect(() => {
@@ -221,7 +232,7 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
     [availableSlots, selectedSlotKey]
   );
 
-  const confirmBookingInModal = () => {
+  const confirmBookingInModal = async () => {
     if (!selectedTeacher || !selectedSlot) {
       return;
     }
@@ -243,11 +254,12 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
     });
 
     try {
+      setIsSubmitting(true);
       const now = new Date().toISOString();
-      const parsed = readLessonBookings();
+      const parsed = await syncBookingsFromApi();
       const existing = parsed.find((item) => item.id === bookingId);
 
-      upsertLessonBooking({
+      await upsertBookingViaApi({
         id: bookingId,
         courseId: course.id,
         teacherId: selectedTeacher.teacher.id,
@@ -269,7 +281,7 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
       });
 
       if (!existing) {
-        createBookingEvent({
+        await createBookingEventViaApi({
           bookingId,
           actor: "student",
           action: "booking_created",
@@ -311,6 +323,8 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
         description: "Повторите попытку. Если ошибка повторится — перезагрузите страницу.",
         isSuccess: false
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -486,10 +500,11 @@ export function LiveLessonBookingDialog({ course }: LiveLessonBookingDialogProps
                 <button
                   type="button"
                   onClick={confirmBookingInModal}
+                  disabled={isSubmitting}
                   className="inline-flex items-center gap-1 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  Отправить заявку
+                  {isSubmitting ? "Отправляем..." : "Отправить заявку"}
                 </button>
               ) : (
                 <button

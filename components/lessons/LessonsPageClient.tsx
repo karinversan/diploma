@@ -16,12 +16,18 @@ import {
   formatBookingSlotLabel,
   LessonBookingRequest,
   parseSlotToDateTime,
-  readLessonBookings,
-  upsertLessonBooking,
-  updateLessonBooking
+  readLessonBookings
 } from "@/lib/lesson-bookings";
-import { BookingEvent, createBookingEvent, readBookingEvents } from "@/lib/booking-events";
+import { BookingEvent, readBookingEvents } from "@/lib/booking-events";
+import {
+  createBookingEventViaApi,
+  syncBookingEventsFromApi,
+  syncBookingsFromApi,
+  updateBookingViaApi,
+  upsertBookingViaApi
+} from "@/lib/api/bookings-client";
 import { sendMessageToSharedChatThread } from "@/lib/chat-threads";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
 type LessonTab = "upcoming" | "completed";
@@ -199,15 +205,30 @@ export function LessonsPageClient({
   const teacher = selectedTeacher ? getTeacherById(selectedTeacher) : undefined;
 
   useEffect(() => {
-    setBookings(readLessonBookings());
-    setBookingEvents(readBookingEvents());
+    let mounted = true;
 
-    const syncBookings = () => {
+    const hydrateFromApi = async () => {
+      const [nextBookings, nextEvents] = await Promise.all([syncBookingsFromApi(), syncBookingEventsFromApi()]);
+      if (!mounted) {
+        return;
+      }
+      setBookings(nextBookings);
+      setBookingEvents(nextEvents);
+    };
+
+    void hydrateFromApi();
+
+    const syncLocalCache = () => {
       setBookings(readLessonBookings());
       setBookingEvents(readBookingEvents());
     };
-    window.addEventListener("storage", syncBookings);
-    return () => window.removeEventListener("storage", syncBookings);
+    window.addEventListener("storage", syncLocalCache);
+    window.addEventListener(STORAGE_SYNC_EVENT, syncLocalCache);
+    return () => {
+      mounted = false;
+      window.removeEventListener("storage", syncLocalCache);
+      window.removeEventListener(STORAGE_SYNC_EVENT, syncLocalCache);
+    };
   }, []);
 
   const candidateBooking = useMemo(() => {
@@ -319,82 +340,98 @@ export function LessonsPageClient({
 
   const lessonsList = useMemo(() => sortLessonsByStatus(filteredByDay, activeTab), [activeTab, filteredByDay]);
 
-  const requestBookingConfirmation = () => {
+  const requestBookingConfirmation = async () => {
     if (!candidateBooking) {
       return;
     }
 
-    const now = new Date().toISOString();
-    const existing = bookings.find((booking) => booking.id === candidateBooking.id);
-    const studentMessageText = existing?.studentMessage ?? "Здравствуйте! Хочу записаться на это занятие.";
+    try {
+      const now = new Date().toISOString();
+      const existing = bookings.find((booking) => booking.id === candidateBooking.id);
+      const studentMessageText = existing?.studentMessage ?? "Здравствуйте! Хочу записаться на это занятие.";
 
-    const next = upsertLessonBooking({
-      ...candidateBooking,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      status: "pending",
-      studentId: studentProfile.id,
-      studentName: studentProfile.name,
-      amountRubles: candidateBooking.amountRubles,
-      studentMessage: studentMessageText,
-      teacherMessage: undefined,
-      proposedSlot: undefined,
-      source: "lessons_page"
-    });
-
-    if (!existing) {
-      createBookingEvent({
-        bookingId: candidateBooking.id,
-        actor: "student",
-        action: "booking_created",
-        title: "Заявка отправлена",
-        description: `Слот ${formatBookingSlotLabel(candidateBooking.slot)} отправлен преподавателю.`
-      });
-
-      sendMessageToSharedChatThread({
-        teacherId: candidateBooking.teacherId,
-        teacherName: candidateBooking.teacherName,
-        teacherAvatarUrl: teacher?.avatarUrl,
+      const next = await upsertBookingViaApi({
+        ...candidateBooking,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        status: "pending",
         studentId: studentProfile.id,
         studentName: studentProfile.name,
-        studentAvatarUrl: studentProfile.avatarUrl,
-        subject: candidateBooking.subject,
-        courseTitle: candidateBooking.subject,
-        sender: "student",
-        text: studentMessageText
+        amountRubles: candidateBooking.amountRubles,
+        studentMessage: studentMessageText,
+        teacherMessage: undefined,
+        proposedSlot: undefined,
+        source: "lessons_page"
+      });
+
+      if (!existing) {
+        await createBookingEventViaApi({
+          bookingId: candidateBooking.id,
+          actor: "student",
+          action: "booking_created",
+          title: "Заявка отправлена",
+          description: `Слот ${formatBookingSlotLabel(candidateBooking.slot)} отправлен преподавателю.`
+        });
+
+        sendMessageToSharedChatThread({
+          teacherId: candidateBooking.teacherId,
+          teacherName: candidateBooking.teacherName,
+          teacherAvatarUrl: teacher?.avatarUrl,
+          studentId: studentProfile.id,
+          studentName: studentProfile.name,
+          studentAvatarUrl: studentProfile.avatarUrl,
+          subject: candidateBooking.subject,
+          courseTitle: candidateBooking.subject,
+          sender: "student",
+          text: studentMessageText
+        });
+      }
+      setBookingEvents(await syncBookingEventsFromApi());
+
+      setBookings(next);
+      setNotice({
+        kind: "success",
+        title: existing ? "Заявка уже существует" : "Заявка отправлена",
+        description: existing
+          ? "Эта заявка уже находится в обработке преподавателя."
+          : "Преподаватель увидит заявку в своем кабинете и подтвердит слот."
+      });
+    } catch {
+      setNotice({
+        kind: "error",
+        title: "Не удалось отправить заявку",
+        description: "Повторите попытку. Данные будут синхронизированы автоматически."
       });
     }
-    setBookingEvents(readBookingEvents());
-
-    setBookings(next);
-    setNotice({
-      kind: "success",
-      title: existing ? "Заявка уже существует" : "Заявка отправлена",
-      description: existing
-        ? "Эта заявка уже находится в обработке преподавателя."
-        : "Преподаватель увидит заявку в своем кабинете и подтвердит слот."
-    });
   };
 
-  const cancelBookingRequest = (bookingId: string) => {
-    const next = updateLessonBooking(bookingId, { status: "cancelled" });
-    createBookingEvent({
-      bookingId,
-      actor: "student",
-      action: "student_cancelled",
-      title: "Заявка отменена учеником",
-      description: "Ученик отменил заявку до проведения занятия."
-    });
-    setBookings(next);
-    setBookingEvents(readBookingEvents());
-    setNotice({
-      kind: "info",
-      title: "Заявка отменена",
-      description: "Если нужно, выберите новый слот и отправьте заявку повторно."
-    });
+  const cancelBookingRequest = async (bookingId: string) => {
+    try {
+      const next = await updateBookingViaApi(bookingId, { status: "cancelled" });
+      await createBookingEventViaApi({
+        bookingId,
+        actor: "student",
+        action: "student_cancelled",
+        title: "Заявка отменена учеником",
+        description: "Ученик отменил заявку до проведения занятия."
+      });
+      setBookings(next);
+      setBookingEvents(await syncBookingEventsFromApi());
+      setNotice({
+        kind: "info",
+        title: "Заявка отменена",
+        description: "Если нужно, выберите новый слот и отправьте заявку повторно."
+      });
+    } catch {
+      setNotice({
+        kind: "error",
+        title: "Не удалось отменить заявку",
+        description: "Повторите попытку через несколько секунд."
+      });
+    }
   };
 
-  const acceptTeacherProposal = (booking: LessonBookingRequest) => {
+  const acceptTeacherProposal = async (booking: LessonBookingRequest) => {
     if (!booking.proposedSlot) {
       return;
     }
@@ -409,26 +446,34 @@ export function LessonsPageClient({
       return;
     }
 
-    const next = updateLessonBooking(booking.id, {
-      status: "awaiting_payment",
-      slot: booking.proposedSlot,
-      proposedSlot: undefined,
-      startAt
-    });
-    createBookingEvent({
-      bookingId: booking.id,
-      actor: "student",
-      action: "student_accepted_reschedule",
-      title: "Перенос принят учеником",
-      description: `Новый слот: ${formatBookingSlotLabel(booking.proposedSlot)}.`
-    });
-    setBookings(next);
-    setBookingEvents(readBookingEvents());
-    setNotice({
-      kind: "success",
-      title: "Перенос подтвержден",
-      description: "Слот перенесен. Для фиксации в расписании нужно оплатить занятие."
-    });
+    try {
+      const next = await updateBookingViaApi(booking.id, {
+        status: "awaiting_payment",
+        slot: booking.proposedSlot,
+        proposedSlot: undefined,
+        startAt
+      });
+      await createBookingEventViaApi({
+        bookingId: booking.id,
+        actor: "student",
+        action: "student_accepted_reschedule",
+        title: "Перенос принят учеником",
+        description: `Новый слот: ${formatBookingSlotLabel(booking.proposedSlot)}.`
+      });
+      setBookings(next);
+      setBookingEvents(await syncBookingEventsFromApi());
+      setNotice({
+        kind: "success",
+        title: "Перенос подтвержден",
+        description: "Слот перенесен. Для фиксации в расписании нужно оплатить занятие."
+      });
+    } catch {
+      setNotice({
+        kind: "error",
+        title: "Не удалось подтвердить перенос",
+        description: "Повторите попытку. Если ошибка повторится, перезагрузите страницу."
+      });
+    }
   };
 
   const filteredBookingsCount =
