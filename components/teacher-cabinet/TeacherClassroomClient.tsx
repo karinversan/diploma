@@ -386,14 +386,18 @@ function getRequestSlaMeta(request: LessonBookingRequest, nowMs = Date.now()) {
 
   const minutesToStart = getRequestMinutesToStart(request, nowMs);
   let level: RequestSlaLevel = "ok";
-  if (minutesToStart <= 0 || minutesToStart <= 180) {
+  if (minutesToStart <= 180) {
     level = "breach";
   } else if (minutesToStart <= 12 * 60) {
     level = "risk";
   }
 
   if (level === "breach") {
-    return { level, label: "SLA критичен", className: "border-rose-300 bg-rose-50 text-rose-700" };
+    return {
+      level,
+      label: minutesToStart <= 0 ? "SLA просрочен" : "SLA критичен",
+      className: "border-rose-300 bg-rose-50 text-rose-700"
+    };
   }
   if (level === "risk") {
     return { level, label: "SLA под риском", className: "border-amber-300 bg-amber-50 text-amber-800" };
@@ -515,10 +519,12 @@ export function TeacherClassroomClient({
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [bookingRequests, setBookingRequests] = useState<LessonBookingRequest[]>([]);
   const [bookingEvents, setBookingEvents] = useState<BookingEvent[]>([]);
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const [teacherActionNote, setTeacherActionNote] = useState<string | null>(null);
   const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>(resolvedInitialStatusFilter);
   const [requestViewMode, setRequestViewMode] = useState<RequestViewMode>(resolvedInitialViewMode);
   const [showUrgentOnly, setShowUrgentOnly] = useState(false);
+  const [showSlaRiskOnly, setShowSlaRiskOnly] = useState(false);
   const [messageTone, setMessageTone] = useState<MessageTone>("standard");
   const [teacherMessageDraft, setTeacherMessageDraft] = useState("");
   const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
@@ -555,6 +561,11 @@ export function TeacherClassroomClient({
       window.removeEventListener("storage", syncAll);
       window.removeEventListener(STORAGE_SYNC_EVENT, syncAll);
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const requestsForTeacher = useMemo(
@@ -597,10 +608,14 @@ export function TeacherClassroomClient({
         }
 
         if (showUrgentOnly) {
-          const urgency = getRequestUrgency(request);
+          const urgency = getRequestUrgency(request, clockNow);
           if (urgency !== "critical" && urgency !== "today") {
             return false;
           }
+        }
+
+        if (showSlaRiskOnly && !isRequestSlaRisk(request, clockNow)) {
+          return false;
         }
 
         if (!query) {
@@ -613,20 +628,24 @@ export function TeacherClassroomClient({
           .includes(query);
       })
       .sort((left, right) => {
-        const priorityDiff = getRequestPriorityScore(right) - getRequestPriorityScore(left);
+        const priorityDiff = getRequestPriorityScore(right, clockNow) - getRequestPriorityScore(left, clockNow);
         if (priorityDiff !== 0) {
           return priorityDiff;
         }
         return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
       });
-  }, [requestStatusFilter, requestsForTeacher, searchQuery, showUrgentOnly]);
+  }, [clockNow, requestStatusFilter, requestsForTeacher, searchQuery, showSlaRiskOnly, showUrgentOnly]);
 
   const urgentRequestsCount = useMemo(() => {
     return requestsForTeacher.filter((request) => {
-      const urgency = getRequestUrgency(request);
+      const urgency = getRequestUrgency(request, clockNow);
       return urgency === "critical" || urgency === "today";
     }).length;
-  }, [requestsForTeacher]);
+  }, [clockNow, requestsForTeacher]);
+
+  const slaRiskRequestsCount = useMemo(() => {
+    return requestsForTeacher.filter((request) => isRequestSlaRisk(request, clockNow)).length;
+  }, [clockNow, requestsForTeacher]);
 
   const queueColumns = useMemo(() => {
     return queueColumnConfig
@@ -1357,7 +1376,10 @@ export function TeacherClassroomClient({
 
   const renderRequestCard = (request: LessonBookingRequest, layout: "list" | "kanban" = "list") => {
     const statusMeta = getRequestStatusMeta(request.status);
-    const urgencyMeta = getRequestUrgencyMeta(request);
+    const urgencyMeta = getRequestUrgencyMeta(request, clockNow);
+    const slaMeta = getRequestSlaMeta(request, clockNow);
+    const recommendation = getRequestRecommendation(request, clockNow);
+    const countdownLabel = getRequestCountdownLabel(request, clockNow);
     const actionable = isActionableRequestStatus(request.status);
     const isSelected = selectedRequestIds.includes(request.id);
     const history = bookingEventsByRequest.get(request.id) ?? [];
@@ -1392,6 +1414,9 @@ export function TeacherClassroomClient({
                 {urgencyMeta.label}
               </span>
             ) : null}
+            {slaMeta ? (
+              <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", slaMeta.className)}>{slaMeta.label}</span>
+            ) : null}
             {actionable ? (
               <label className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-2 py-0.5 text-xs font-semibold text-foreground">
                 <input
@@ -1410,7 +1435,13 @@ export function TeacherClassroomClient({
           Текущий слот: {formatBookingSlotLabel(request.slot)}
           {request.proposedSlot ? ` · Предложен: ${formatBookingSlotLabel(request.proposedSlot)}` : ""}
         </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          До занятия: <span className="font-semibold text-foreground">{countdownLabel}</span>
+        </p>
         {request.studentMessage ? <p className="mt-1 text-xs text-muted-foreground">Сообщение ученика: {request.studentMessage}</p> : null}
+        <p className={cn("mt-2 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium", recommendation.className)}>
+          Рекомендация: {recommendation.label}. {recommendation.hint}
+        </p>
 
         {layout === "list" && history.length > 0 ? (
           <details className="mt-2 rounded-xl border border-border bg-slate-50 p-2">
@@ -1485,7 +1516,10 @@ export function TeacherClassroomClient({
 
   const bulkActionUi = pendingBulkAction ? getBulkActionUi(pendingBulkAction) : null;
   const focusedRequestStatusMeta = focusedRequest ? getRequestStatusMeta(focusedRequest.status) : null;
-  const focusedRequestUrgencyMeta = focusedRequest ? getRequestUrgencyMeta(focusedRequest) : null;
+  const focusedRequestUrgencyMeta = focusedRequest ? getRequestUrgencyMeta(focusedRequest, clockNow) : null;
+  const focusedRequestSlaMeta = focusedRequest ? getRequestSlaMeta(focusedRequest, clockNow) : null;
+  const focusedRequestRecommendation = focusedRequest ? getRequestRecommendation(focusedRequest, clockNow) : null;
+  const focusedRequestCountdown = focusedRequest ? getRequestCountdownLabel(focusedRequest, clockNow) : "";
   const drawerActionUi = getDrawerActionUi(drawerAction);
 
   return (
@@ -1678,6 +1712,18 @@ export function TeacherClassroomClient({
               >
                 {showUrgentOnly ? "Показать все" : "Только срочные"}
               </button>
+              <button
+                type="button"
+                onClick={() => setShowSlaRiskOnly((prev) => !prev)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                  showSlaRiskOnly
+                    ? "border-amber-300 bg-amber-50 text-amber-800"
+                    : "border-border bg-white text-foreground hover:bg-slate-50"
+                )}
+              >
+                {showSlaRiskOnly ? "SLA: показать все" : "Только риск SLA"}
+              </button>
 
               <button
                 type="button"
@@ -1712,7 +1758,7 @@ export function TeacherClassroomClient({
                 Отклонить выбранные
               </button>
               <span className="ml-auto text-[11px] text-muted-foreground">
-                Срочных: {urgentRequestsCount} · Выделено: {selectedSelectableCount}
+                Срочных: {urgentRequestsCount} · SLA риск: {slaRiskRequestsCount} · Выделено: {selectedSelectableCount}
               </span>
             </div>
 
@@ -1965,6 +2011,11 @@ export function TeacherClassroomClient({
                           {focusedRequestUrgencyMeta.label}
                         </span>
                       ) : null}
+                      {focusedRequestSlaMeta ? (
+                        <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", focusedRequestSlaMeta.className)}>
+                          {focusedRequestSlaMeta.label}
+                        </span>
+                      ) : null}
                       {focusedRequestStatusMeta ? (
                         <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", focusedRequestStatusMeta.className)}>
                           {focusedRequestStatusMeta.label}
@@ -1986,6 +2037,16 @@ export function TeacherClassroomClient({
                     <p className="mt-2 rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2 text-xs text-primary">
                       Предложенный слот: {formatBookingSlotLabel(focusedRequest.proposedSlot)}
                     </p>
+                  ) : null}
+
+                  {focusedRequestRecommendation ? (
+                    <div className={cn("mt-2 rounded-xl border px-2.5 py-2 text-xs", focusedRequestRecommendation.className)}>
+                      <p>
+                        До слота: <span className="font-semibold">{focusedRequestCountdown}</span>
+                      </p>
+                      <p className="mt-1 font-semibold">Рекомендуем: {focusedRequestRecommendation.label}</p>
+                      <p className="mt-0.5 text-[11px] opacity-90">{focusedRequestRecommendation.hint}</p>
+                    </div>
                   ) : null}
                 </article>
 
