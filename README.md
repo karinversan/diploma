@@ -317,28 +317,3 @@ npm run lint
 ![Demo routes quick map - TODO](docs/media/demo/demo-routes-map.png)
 _What should be here: compact route map for rapid navigation during project demo._
 
-## Media Checklist for Final Defense
-
-Create and add these files before final presentation:
-
-- `docs/media/overview/platform-overview.png`
-- `docs/media/overview/problem-solution-flow.gif`
-- `docs/media/overview/core-advantages.png`
-- `docs/media/roles/role-model-diagram.png`
-- `docs/media/student/student-dashboard.png`
-- `docs/media/student/student-booking-payment-flow.gif`
-- `docs/media/student/student-homework-vocabulary.png`
-- `docs/media/teacher/teacher-dashboard.png`
-- `docs/media/teacher/teacher-classroom-moderation.gif`
-- `docs/media/teacher/teacher-course-editor.png`
-- `docs/media/admin/admin-dashboard.png`
-- `docs/media/admin/admin-moderation-workflow.gif`
-- `docs/media/admin/admin-quality-panel.png`
-- `docs/media/live/live-classroom.png`
-- `docs/media/live/live-collaboration.gif`
-- `docs/media/live/ai-support-panel.png`
-- `docs/media/workflows/cross-role-journey-map.png`
-- `docs/media/architecture/solution-architecture.png`
-- `docs/media/architecture/data-model-erd.png`
-- `docs/media/roadmap/implementation-roadmap.png`
-- `docs/media/demo/demo-routes-map.png`
