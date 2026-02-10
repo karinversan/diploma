@@ -1,3 +1,5 @@
+import { emitStorageSyncEvent } from "@/lib/storage-sync";
+
 export const TUTOR_APPLICATIONS_STORAGE_KEY = "tutor-applications-v1";
 
 export type TutorApplicationStatus = "pending" | "approved" | "rejected";
@@ -92,6 +94,7 @@ export function writeTutorApplications(applications: TutorApplication[]) {
   }
 
   window.localStorage.setItem(TUTOR_APPLICATIONS_STORAGE_KEY, JSON.stringify(applications));
+  emitStorageSyncEvent();
 }
 
 export function ensureTutorApplicationsSeed(seed: TutorApplication[]) {

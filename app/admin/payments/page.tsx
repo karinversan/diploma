@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { type RefundTicket } from "@/data/admin";
 import { readRefundTickets, updateRefundTicket } from "@/lib/refund-tickets";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { cn } from "@/lib/utils";
 
 function formatDate(value: string) {
@@ -26,7 +27,11 @@ export default function AdminPaymentsPage() {
     setTickets(readRefundTickets());
     const syncTickets = () => setTickets(readRefundTickets());
     window.addEventListener("storage", syncTickets);
-    return () => window.removeEventListener("storage", syncTickets);
+    window.addEventListener(STORAGE_SYNC_EVENT, syncTickets);
+    return () => {
+      window.removeEventListener("storage", syncTickets);
+      window.removeEventListener(STORAGE_SYNC_EVENT, syncTickets);
+    };
   }, []);
 
   const totalPendingAmount = useMemo(() => {

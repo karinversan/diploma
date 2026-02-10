@@ -4,15 +4,17 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ShieldAlert, Sparkles, XCircle } from "lucide-react";
 
-import { platformKpis, tutorVerificationQueue } from "@/data/admin";
+import { platformKpis, tutorVerificationQueue, type LessonIncident, type RefundTicket } from "@/data/admin";
+import { readAdminLessonIncidents, updateAdminLessonIncident } from "@/lib/admin-incidents";
+import { readLessonBookings } from "@/lib/lesson-bookings";
+import { readRefundTickets, updateRefundTicket } from "@/lib/refund-tickets";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import {
   ensureTutorApplicationsSeed,
   readTutorApplications,
-  TutorApplication,
+  type TutorApplication,
   updateTutorApplication
 } from "@/lib/tutor-applications";
-import { readLessonBookings } from "@/lib/lesson-bookings";
-import { readRefundTickets } from "@/lib/refund-tickets";
 import { cn } from "@/lib/utils";
 
 function formatDate(value: string) {
@@ -21,10 +23,20 @@ function formatDate(value: string) {
   return `${day}.${month}.${year}`;
 }
 
+function formatAmount(amount: number) {
+  return new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: "RUB",
+    maximumFractionDigits: 0
+  }).format(amount);
+}
+
 export default function AdminDashboardPage() {
   const [verificationQueue, setVerificationQueue] = useState<TutorApplication[]>([]);
   const [bookingOps, setBookingOps] = useState({ pending: 0, awaitingPayment: 0, paid: 0, declined: 0 });
   const [pendingRefunds, setPendingRefunds] = useState(0);
+  const [refundQueue, setRefundQueue] = useState<RefundTicket[]>([]);
+  const [incidentQueue, setIncidentQueue] = useState<LessonIncident[]>([]);
 
   useEffect(() => {
     const seedFromData: TutorApplication[] = tutorVerificationQueue.map((request, index) => ({
@@ -41,9 +53,11 @@ export default function AdminDashboardPage() {
       updatedAt: request.submittedAt
     }));
 
-    setVerificationQueue(ensureTutorApplicationsSeed(seedFromData));
-    const syncApplications = () => {
+    ensureTutorApplicationsSeed(seedFromData);
+
+    const syncData = () => {
       setVerificationQueue(readTutorApplications());
+
       const bookings = readLessonBookings();
       setBookingOps({
         pending: bookings.filter((item) => item.status === "pending").length,
@@ -51,12 +65,21 @@ export default function AdminDashboardPage() {
         paid: bookings.filter((item) => item.status === "paid").length,
         declined: bookings.filter((item) => item.status === "declined").length
       });
-      setPendingRefunds(readRefundTickets().filter((ticket) => ticket.status === "pending").length);
+
+      const refunds = readRefundTickets();
+      setRefundQueue(refunds);
+      setPendingRefunds(refunds.filter((ticket) => ticket.status === "pending").length);
+      setIncidentQueue(readAdminLessonIncidents());
     };
 
-    syncApplications();
-    window.addEventListener("storage", syncApplications);
-    return () => window.removeEventListener("storage", syncApplications);
+    syncData();
+    window.addEventListener("storage", syncData);
+    window.addEventListener(STORAGE_SYNC_EVENT, syncData);
+
+    return () => {
+      window.removeEventListener("storage", syncData);
+      window.removeEventListener(STORAGE_SYNC_EVENT, syncData);
+    };
   }, []);
 
   const pendingCount = useMemo(
@@ -64,8 +87,47 @@ export default function AdminDashboardPage() {
     [verificationQueue]
   );
 
+  const pendingRefundTickets = useMemo(
+    () => refundQueue.filter((ticket) => ticket.status === "pending").slice(0, 2),
+    [refundQueue]
+  );
+
+  const unresolvedIncidentsCount = useMemo(
+    () => incidentQueue.filter((incident) => incident.status !== "resolved").length,
+    [incidentQueue]
+  );
+
+  const highPriorityIncidents = useMemo(() => {
+    const severityOrder: Record<LessonIncident["severity"], number> = {
+      высокий: 3,
+      средний: 2,
+      низкий: 1
+    };
+
+    return incidentQueue
+      .filter((incident) => incident.status !== "resolved")
+      .sort((left, right) => {
+        const bySeverity = severityOrder[right.severity] - severityOrder[left.severity];
+        if (bySeverity !== 0) {
+          return bySeverity;
+        }
+        return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+      })
+      .slice(0, 2);
+  }, [incidentQueue]);
+
   const updateVerification = (requestId: string, status: TutorApplication["status"], note: string) => {
     setVerificationQueue(updateTutorApplication(requestId, { status, adminNote: note }));
+  };
+
+  const moderateRefund = (ticketId: string, status: RefundTicket["status"]) => {
+    const next = updateRefundTicket(ticketId, status);
+    setRefundQueue(next);
+    setPendingRefunds(next.filter((ticket) => ticket.status === "pending").length);
+  };
+
+  const changeIncidentStatus = (incidentId: string, status: LessonIncident["status"]) => {
+    setIncidentQueue(updateAdminLessonIncident(incidentId, { status }));
   };
 
   return (
@@ -182,18 +244,122 @@ export default function AdminDashboardPage() {
           <article className="rounded-3xl border border-border bg-white p-5 shadow-card">
             <p className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
               <ShieldAlert className="h-3.5 w-3.5" />
-              Операционные действия
+              Центр операционных очередей
             </p>
-            <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-              <p>1. Проверка новых преподавателей и подтверждение профилей.</p>
-              <p>2. Контроль очереди заявок на возвраты и спорные занятия.</p>
-              <p>3. Мониторинг тестовых прогонов (unit/integration/e2e) перед релизом.</p>
-              <p>4. Анализ UX-метрик: конверсия в урок, удержание и завершение домашек.</p>
-              <p>
-                5. Текущие бронирования: ожидают подтверждения — {bookingOps.pending}, ожидают оплаты — {bookingOps.awaitingPayment},
-                оплачено — {bookingOps.paid}, отклонено — {bookingOps.declined}.
-              </p>
-              <p>6. Заявок на возврат в обработке: {pendingRefunds}.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Быстрые действия по заявкам, возвратам и инцидентам без переходов между разделами.</p>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-xl border border-border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                Заявки на слот: <span className="font-semibold text-foreground">{bookingOps.pending}</span>
+              </div>
+              <div className="rounded-xl border border-border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                Ожидают оплату: <span className="font-semibold text-foreground">{bookingOps.awaitingPayment}</span>
+              </div>
+              <div className="rounded-xl border border-border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                Возвраты в обработке: <span className="font-semibold text-foreground">{pendingRefunds}</span>
+              </div>
+              <div className="rounded-xl border border-border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                Нерешенные инциденты: <span className="font-semibold text-foreground">{unresolvedIncidentsCount}</span>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Возвраты (приоритет)</p>
+                {pendingRefundTickets.length === 0 ? (
+                  <p className="mt-2 rounded-xl border border-dashed border-border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                    Срочных возвратов нет.
+                  </p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {pendingRefundTickets.map((ticket) => (
+                      <article key={ticket.id} className="rounded-xl border border-amber-300 bg-amber-50 p-3">
+                        <p className="text-xs font-semibold text-foreground">{ticket.invoice} · {ticket.studentName}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{ticket.reason}</p>
+                        <p className="mt-1 text-xs font-semibold text-foreground">Сумма: {formatAmount(ticket.amountRubles)}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => moderateRefund(ticket.id, "approved")}
+                            className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
+                          >
+                            Одобрить
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moderateRefund(ticket.id, "declined")}
+                            className="rounded-full bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
+                          >
+                            Отклонить
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Инциденты уроков</p>
+                {highPriorityIncidents.length === 0 ? (
+                  <p className="mt-2 rounded-xl border border-dashed border-border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                    Все инциденты закрыты.
+                  </p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {highPriorityIncidents.map((incident) => (
+                      <article key={incident.id} className="rounded-xl border border-border bg-slate-50 p-3">
+                        <p className="text-xs font-semibold text-foreground">{incident.lessonTitle}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{incident.teacherName} · {incident.studentName}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                              incident.severity === "высокий"
+                                ? "bg-rose-100 text-rose-700"
+                                : incident.severity === "средний"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-emerald-100 text-emerald-700"
+                            )}
+                          >
+                            {incident.severity}
+                          </span>
+                          {incident.status !== "in_progress" ? (
+                            <button
+                              type="button"
+                              onClick={() => changeIncidentStatus(incident.id, "in_progress")}
+                              className="rounded-full border border-border bg-white px-2.5 py-1 text-[11px] font-semibold text-foreground"
+                            >
+                              В работу
+                            </button>
+                          ) : null}
+                          {incident.status !== "resolved" ? (
+                            <button
+                              type="button"
+                              onClick={() => changeIncidentStatus(incident.id, "resolved")}
+                              className="rounded-full bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white"
+                            >
+                              Закрыть
+                            </button>
+                          ) : null}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Link href="/admin/payments" className="rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground">
+                  Все возвраты
+                </Link>
+                <Link href="/admin/lessons" className="rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground">
+                  Все инциденты
+                </Link>
+                <Link href="/admin/users" className="rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground">
+                  Все заявки преподавателей
+                </Link>
+              </div>
             </div>
           </article>
         </section>

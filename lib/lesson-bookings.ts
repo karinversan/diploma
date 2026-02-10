@@ -1,3 +1,5 @@
+import { emitStorageSyncEvent } from "@/lib/storage-sync";
+
 export const LESSON_BOOKINGS_STORAGE_KEY = "lesson-booking-requests-v2";
 export const LEGACY_BOOKINGS_STORAGE_KEY = "student-bookings-v1";
 
@@ -180,6 +182,7 @@ export function writeLessonBookings(bookings: LessonBookingRequest[]) {
   }
 
   window.localStorage.setItem(LESSON_BOOKINGS_STORAGE_KEY, JSON.stringify(bookings));
+  emitStorageSyncEvent();
 }
 
 export function upsertLessonBooking(booking: LessonBookingRequest) {

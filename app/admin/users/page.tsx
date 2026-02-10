@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 
 import { adminUsers, type PlatformUser } from "@/data/admin";
+import { STORAGE_SYNC_EVENT } from "@/lib/storage-sync";
 import { readTutorApplications, TutorApplication, updateTutorApplication } from "@/lib/tutor-applications";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +31,11 @@ export default function AdminUsersPage() {
 
     syncApplications();
     window.addEventListener("storage", syncApplications);
-    return () => window.removeEventListener("storage", syncApplications);
+    window.addEventListener(STORAGE_SYNC_EVENT, syncApplications);
+    return () => {
+      window.removeEventListener("storage", syncApplications);
+      window.removeEventListener(STORAGE_SYNC_EVENT, syncApplications);
+    };
   }, []);
 
   const filteredUsers = useMemo(() => {

@@ -1,4 +1,5 @@
 import { refundTickets, type RefundTicket } from "@/data/admin";
+import { emitStorageSyncEvent } from "@/lib/storage-sync";
 
 export const REFUND_TICKETS_STORAGE_KEY = "refund-tickets-v1";
 
@@ -76,6 +77,7 @@ export function writeRefundTickets(tickets: RefundTicket[]) {
   }
 
   window.localStorage.setItem(REFUND_TICKETS_STORAGE_KEY, JSON.stringify(tickets));
+  emitStorageSyncEvent();
 }
 
 export function createRefundTicket(payload: CreateRefundTicketPayload) {

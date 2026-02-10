@@ -2,6 +2,7 @@ import { messageThreads } from "@/data/messages";
 import { studentProfile } from "@/data/student";
 import { teacherCabinetProfile, teacherMessageThreads } from "@/data/teacher-cabinet";
 import { getTeacherById } from "@/data/teachers";
+import { emitStorageSyncEvent } from "@/lib/storage-sync";
 
 export const CHAT_THREADS_STORAGE_KEY = "skillzone-chat-threads-v1";
 
@@ -316,6 +317,7 @@ export function writeSharedChatThreads(threads: SharedChatThread[]) {
   }
 
   window.localStorage.setItem(CHAT_THREADS_STORAGE_KEY, JSON.stringify(threads));
+  emitStorageSyncEvent();
 }
 
 export function ensureSharedChatThread(payload: EnsureThreadPayload & { threadId?: string }) {
